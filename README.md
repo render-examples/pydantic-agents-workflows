@@ -330,40 +330,22 @@ Blueprints (`render.yaml`) can't create Workflows yet, so do this once in the Da
 > repo's `.python-version`. Add an env var **`PYTHON_VERSION` = `3.13`** in step 3c so the build
 > matches `uv.lock` and the rest of the stack.
 
-**3c. Link config and add the database.** The Workflows service runs the same
-`backend.config.Settings` as the gateway, so instead of re-typing every variable, **link the
-`pydantic-agents-workflows-pipeline` env group** the Blueprint already created:
+**3c. Configure the workflow environment.**
 
-1. Under **Environment → Environment Groups**, click **Link Existing Group → `pydantic-agents-workflows-pipeline`**.
+First, connect your workflow to the environment group you set up earlier. Select **Advanced**. Under **Linked Environment Groups**, choose **`pydantic-agents-workflows-pipeline`**.
    This pulls in both API keys, both Logfire tokens, and all pipeline/RAG/model config in one step.
-2. Add the two variables that *can't* come from the group (env groups hold only plain
-   `key: value` pairs — no database links):
 
-   | Variable | Required? | Value / Source |
-   |---|---|---|
-   | `DATABASE_URL` | ✅ Required | Click **Add from Database → `pydantic-agents-workflows-db`** (already provisioned by step 2's Blueprint — you are *not* creating a new database, just linking the existing one). Use the **same** database as the gateway so the **History** tab populates. |
-   | `PYTHON_VERSION` | Recommended | `3.13` (see the build note above) |
+Click **Deploy workflow**. While you're waiting for it to finish deploying, add the two variables that *can't* come from the group (env groups hold only plain `key: value` pairs — no database links):
 
-   > **Bind `DATABASE_URL`, don't hardcode it.** *Add from Database* injects the managed
-   > internal connection string and auto-updates if creds rotate. Pasting a literal URL (into the
-   > service or the group) is a static snapshot that breaks on rotation — avoid it.
+In the left panel of your workflow service, select **Environment**. Under `Environment variables`, click the down arrow next to `Add variable` and choose **Datastore URL**. Select the database you provisioned in the blueprint step above, likely called `pydantic-agents-workflows-db`. Underneath the newly created variable, click the arrow next to `Save only` and choose `Save, rebuild, and register`.
+
+Optionally, set `PYTHON_VERSION` to `3.13`. See the build note above.
 
 The group's four secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LOGFIRE_TOKEN`,
-`LOGFIRE_READ_TOKEN`) are set once when applying the Blueprint (step 2) and reused here by linking
-the group — the first three are required and the service crashes on startup without them
-(no defaults in [`backend/config.py`](./backend/config.py)).
+`LOGFIRE_READ_TOKEN`) are set once when applying the Blueprint (step 2) and reused here by linking the group — the first three are required and the service crashes on startup without them (no defaults in [`backend/config.py`](./backend/config.py)).
 
-**End state — the Workflows service environment:**
 
-```
-[linked group]  pydantic-agents-workflows-pipeline   # 4 secrets + pipeline/RAG/model config
-DATABASE_URL    → from pydantic-agents-workflows-db   # per-service bind, not in any group
-PYTHON_VERSION  = 3.13
-```
-
-**3d. Create the service** and wait for the first deploy to finish. Then copy the service's
-**slug** (shown on its Dashboard page / in its URL, e.g. `pydantic-agents-workflow`) — you'll
-set it as `WORKFLOW_SLUG` in the `pydantic-agents-workflows-pipeline-trigger` group in step 4, which the gateway and cron
+**3d. Copy the workflow slug** (shown on the Dashboard page / in its URL, e.g. `pydantic-agents-workflow`). You'll set it as `WORKFLOW_SLUG` in the `pydantic-agents-workflows-pipeline-trigger` group in step 4, which the gateway and cron
 both inherit.
 
 ### 4. Fill in the env-group values
@@ -371,7 +353,7 @@ both inherit.
 Because the gateway and cron read everything from the two env groups, you set values **on the
 groups**, not on each service — every linked service picks them up automatically.
 
-**`pydantic-agents-workflows-pipeline`** (drives the gateway + Workflows service) — set the four secrets once, when
+**`pydantic-agents-workflows-pipeline`** (drives the gateway + Workflows service). Set the four secrets once, when
 you apply the Blueprint in step 2:
 
 | Variable | Source |
@@ -392,14 +374,11 @@ exists (step 3):
 > Edit a group under **Dashboard → Env Groups → `<group>`**. Saving re-deploys every service
 > linked to it, so the gateway and cron both pick up `WORKFLOW_SLUG` from a single edit.
 
-**Auto-filled, no action needed:** `DATABASE_URL` (injected from the database service) and the
-rest of `pydantic-agents-workflows-pipeline`'s config (`MAX_TOKENS`, `TIMEOUT_SECONDS`, `RAG_TOP_K`,
-`SIMILARITY_THRESHOLD`, `VERIFICATION_THRESHOLD`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`, the
-model-selection vars, `ENABLE_CACHING`, `LOG_LEVEL`) ship with sensible defaults in `render.yaml`.
+Other env vars not mentioned explicitly here have been auto-filled for you.
 
 ### 5. Wire the frontend to the backend
 
-After the gateway deploys, copy its public URL from the service's Dashboard page and set it as
+After the gateway web service deploys, copy its public URL from the service's Dashboard page and set it as
 the `NEXT_PUBLIC_API_URL` env var on the **frontend** service, then redeploy the frontend so the
 value takes effect. For this deploy that's:
 
@@ -411,13 +390,15 @@ Use the **base origin only** — no trailing slash and no `/api` path (the front
 `/ask`, `/health`, etc. itself). If your service name isn't globally unique, Render adds a random
 suffix (`…-api-xxxx.onrender.com`), so always copy the exact URL shown in the Dashboard.
 
+Click **Save and rebuild**.
+
 ### 6. Seed the corpus, then done
 
 The Workflows service has no documents until ingestion runs. Trigger it once to seed the DB
 (the cron will keep it fresh afterward):
 
 ```bash
-render workflows start ingest_all   # or trigger from the Dashboard
+render workflows start ingest_all   # or start the ingest_all task in the Dashboard with no payload
 ```
 
 ### 7. (Optional) Smoke-test the pipeline from the Dashboard
@@ -425,8 +406,8 @@ render workflows start ingest_all   # or trigger from the Dashboard
 Once the corpus is seeded, you can run the Q&A pipeline directly in the [Render dashboard](https://dashboard.render.com) — no frontend needed. In the
 **Workflows service → Tasks**, start the **`run_qa_pipeline`** task with this input:
 
-```json
-{ "question": "How do I deploy an AI agent on Render?" }
+```
+"How do I deploy an AI agent on Render?"
 ```
 
 > **Security note — this is an open demo.** There's no authentication or rate limiting, and
