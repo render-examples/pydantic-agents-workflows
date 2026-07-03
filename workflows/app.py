@@ -30,6 +30,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import logfire
+from opentelemetry import context as otel_context
+from opentelemetry.propagate import extract, inject
 from render_sdk import Retry, Workflows
 
 # Importing observability configures Logfire at module load (same as the web app).
@@ -88,6 +90,30 @@ def flush_on_exit(fn):
     return wrapper
 
 
+def with_trace_context(fn):
+    """Re-attach the orchestrator's OTel context inside a subtask instance.
+
+    Each subtask runs in a fresh process with an empty OTel context, so its
+    auto-instrumented spans would otherwise start a brand-new trace. The
+    orchestrator passes a W3C carrier (the ``trace_context`` kwarg); we extract
+    it and attach it for the whole body so every span created here joins the
+    shared ``qa_pipeline`` trace — making the single stored trace_id contain the
+    full pipeline. No-ops when no carrier is supplied (e.g. manual runs).
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        carrier = kwargs.get("trace_context")
+        token = otel_context.attach(extract(carrier)) if carrier else None
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            if token is not None:
+                otel_context.detach(token)
+
+    return wrapper
+
+
 async def _ensure_ready(db: bool = False) -> None:
     """Initialize per-instance dependencies a task relies on.
 
@@ -132,8 +158,11 @@ def _stage_result(
 # ---------------------------------------------------------------------------
 
 @app.task(timeout_seconds=120, retry=Retry(max_retries=3, wait_duration_ms=2000, backoff_scaling=2.0))
+@with_trace_context
 @flush_on_exit
-async def generate_answer_task(question: str, documents_json: list[dict]) -> dict:
+async def generate_answer_task(
+    question: str, documents_json: list[dict], trace_context: dict | None = None
+) -> dict:
     """Subtask: answer generation (Claude). Most expensive + most rate-limit-prone."""
     await _ensure_ready()
     documents = documents_from_json(documents_json)
@@ -141,16 +170,18 @@ async def generate_answer_task(question: str, documents_json: list[dict]) -> dic
 
 
 @app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
+@with_trace_context
 @flush_on_exit
-async def extract_claims_task(answer: str) -> dict:
+async def extract_claims_task(answer: str, trace_context: dict | None = None) -> dict:
     """Subtask: claims extraction (OpenAI). Returns JSON-native claims + cost."""
     await _ensure_ready()
     return await extract_claims(answer)
 
 
 @app.task(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
+@with_trace_context
 @flush_on_exit
-async def verify_claims_task(claims: list[str]) -> dict:
+async def verify_claims_task(claims: list[str], trace_context: dict | None = None) -> dict:
     """Subtask: claims verification. Keeps its internal per-claim asyncio.gather
     (embedding lookups are ms-scale; per-claim fan-out would be slower/costlier)."""
     await _ensure_ready(db=True)
@@ -164,8 +195,11 @@ async def verify_claims_task(claims: list[str]) -> dict:
 
 
 @app.task(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
+@with_trace_context
 @flush_on_exit
-async def check_accuracy_task(answer: str, claims_json: list[dict]) -> dict:
+async def check_accuracy_task(
+    answer: str, claims_json: list[dict], trace_context: dict | None = None
+) -> dict:
     """Subtask: technical-accuracy check (Claude)."""
     await _ensure_ready()
     verified_claims = claims_from_json(claims_json)
@@ -187,15 +221,21 @@ async def _rate_quality(rater, question: str, answer: str, doc_count: int) -> di
 
 
 @app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
+@with_trace_context
 @flush_on_exit
-async def rate_quality_openai_task(question: str, answer: str, doc_count: int) -> dict:
+async def rate_quality_openai_task(
+    question: str, answer: str, doc_count: int, trace_context: dict | None = None
+) -> dict:
     """Subtask: OpenAI quality judge (runs on its own instance, parallel to Claude judge)."""
     return await _rate_quality(evaluate_with_openai, question, answer, doc_count)
 
 
 @app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
+@with_trace_context
 @flush_on_exit
-async def rate_quality_anthropic_task(question: str, answer: str, doc_count: int) -> dict:
+async def rate_quality_anthropic_task(
+    question: str, answer: str, doc_count: int, trace_context: dict | None = None
+) -> dict:
     """Subtask: Claude quality judge (runs on its own instance, parallel to OpenAI judge)."""
     return await _rate_quality(evaluate_with_anthropic, question, answer, doc_count)
 
@@ -232,6 +272,13 @@ async def run_qa_pipeline(
     await _ensure_ready(db=True)
 
     async with pipeline_trace(question):
+        # Capture the qa_pipeline OTel context into a W3C carrier so each subtask
+        # (a separate Workflows instance) can re-attach it and emit its spans into
+        # this same trace. Without this, subtask spans start their own traces and
+        # the single stored trace_id only ever contains the in-process spans.
+        trace_carrier: dict[str, str] = {}
+        inject(trace_carrier)
+
         stages: list[PipelineStageResult] = []
         total_cost = 0.0
         pipeline_start = time.time()
@@ -299,7 +346,11 @@ async def run_qa_pipeline(
 
         # --- Generate phase: the expensive Claude call as a retried subtask ---
         await emit("generation", "started", "Generating answer...", 28, total_cost)
-        gen_result = await generate_answer_task(question, documents_to_json(documents))
+        gen_result = await generate_answer_task(
+            question=question,
+            documents_json=documents_to_json(documents),
+            trace_context=trace_carrier,
+        )
         stages.append(_stage_result(
             "answer_generation",
             cost_usd=gen_result["cost_usd"],
@@ -314,7 +365,7 @@ async def run_qa_pipeline(
         # --- Grounding phase: extract claims, then verify them against sources ---
         # Claims extraction (own retried task)
         await emit("claims", "started", "Extracting factual claims...", 43, total_cost)
-        claims_result = await extract_claims_task(answer_text)
+        claims_result = await extract_claims_task(answer=answer_text, trace_context=trace_carrier)
         stages.append(_stage_result(
             "claims_extraction",
             cost_usd=claims_result["cost_usd"],
@@ -330,7 +381,9 @@ async def run_qa_pipeline(
 
         # Claims verification (own task; per-claim gather stays in-process inside it)
         await emit("verification", "started", "Verifying claims...", 55, total_cost)
-        verification_result = await verify_claims_task(claims_result["claims"])
+        verification_result = await verify_claims_task(
+            claims=claims_result["claims"], trace_context=trace_carrier
+        )
         verified_claims = claims_from_json(verification_result["verified_claims"])
         verification_rate = verification_result["verification_rate"] * 100
         verified_count = len([c for c in verified_claims if c.verified])
@@ -362,9 +415,23 @@ async def run_qa_pipeline(
         )
         stage_start = time.time()
         accuracy_result, openai_rate, anthropic_rate = await asyncio.gather(
-            check_accuracy_task(answer_text, claims_to_json(verified_claims)),
-            rate_quality_openai_task(question, answer_text, len(documents)),
-            rate_quality_anthropic_task(question, answer_text, len(documents)),
+            check_accuracy_task(
+                answer=answer_text,
+                claims_json=claims_to_json(verified_claims),
+                trace_context=trace_carrier,
+            ),
+            rate_quality_openai_task(
+                question=question,
+                answer=answer_text,
+                doc_count=len(documents),
+                trace_context=trace_carrier,
+            ),
+            rate_quality_anthropic_task(
+                question=question,
+                answer=answer_text,
+                doc_count=len(documents),
+                trace_context=trace_carrier,
+            ),
         )
         parallel_duration = (time.time() - stage_start) * 1000
 

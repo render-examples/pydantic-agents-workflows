@@ -186,19 +186,25 @@ export async function clearAllHistory(): Promise<{ count: number }> {
   return response.json()
 }
 
+// Matches the row shape returned by the backend Logfire query
+// (see backend/api/logs.py). `level` is a numeric OTel severity, and
+// `attributes` can arrive as a JSON string that the renderer parses.
 export interface LogfireLog {
-  timestamp: string
+  start_timestamp: string
   message: string
-  level: string
+  level: number
   span_name: string
-  attributes: Record<string, any>
+  span_id: string
+  parent_span_id: string | null
+  attributes: Record<string, any> | string
   service_name: string
+  trace_id: string
 }
 
 export interface SessionLogsResponse {
   trace_id: string
   logs: LogfireLog[]
-  columns: string[]
+  record_count: number
 }
 
 export async function getSessionLogs(sessionId: string): Promise<SessionLogsResponse> {

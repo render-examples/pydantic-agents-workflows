@@ -447,14 +447,18 @@ export default function AnswerDisplay({ answer }: AnswerDisplayProps) {
                       const spanMap = new Map<string, any>()
                       const rootSpans: any[] = []
                       const childrenMap = new Map<string, any[]>()
-                      
+
+                      // Pass 1: index every span so we can tell present parents
+                      // from absent ones before classifying roots.
+                      logs.logs.forEach((log: any) => spanMap.set(log.span_id, log))
+
+                      // Pass 2: a span is a root if it has no parent OR its parent
+                      // isn't in this set (an orphan — e.g. a span whose parent lives
+                      // in another trace fragment). Promoting orphans to roots means
+                      // nothing is silently dropped from the tree.
                       logs.logs.forEach((log: any) => {
-                        const spanId = log.span_id
                         const parentSpanId = log.parent_span_id
-                        
-                        spanMap.set(spanId, log)
-                        
-                        if (!parentSpanId) {
+                        if (!parentSpanId || !spanMap.has(parentSpanId)) {
                           rootSpans.push(log)
                         } else {
                           if (!childrenMap.has(parentSpanId)) {
@@ -630,8 +634,11 @@ export default function AnswerDisplay({ answer }: AnswerDisplayProps) {
                         return elements
                       }
                       
-                      // Render all root spans and their children
-                      return rootSpans.map(log => renderLog(log, 0))
+                      // Render all root spans and their children. Fall back to a
+                      // flat render of every span if no roots were found, so a
+                      // pathological set (e.g. a parent cycle) still shows something.
+                      const roots = rootSpans.length > 0 ? rootSpans : logs.logs
+                      return roots.map((log: any) => renderLog(log, 0))
                     })()}
                   </div>
                 )}
