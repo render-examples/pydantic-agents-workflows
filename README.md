@@ -270,7 +270,7 @@ You'll paste both into the Render Dashboard in step 3.
 
 ### 2. One-click deploy
 
-<a href="https://render.com/deploy?repo=https://github.com/render-examples/pydantic-agents">
+<a href="https://render.com/deploy?repo=https://github.com/render-examples/pydantic-agents-workflows">
   <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32">
 </a>
 
@@ -428,6 +428,11 @@ Once the corpus is seeded, you can run the Q&A pipeline directly in the [Render 
 ```json
 { "question": "How do I deploy an AI agent on Render?" }
 ```
+
+> **Security note — this is an open demo.** There's no authentication or rate limiting, and
+> `POST /ask` triggers paid OpenAI + Anthropic calls on your keys. Before exposing a public
+> fork, add auth and/or rate limiting to `POST /ask` and set `CORS_ORIGINS` to your frontend
+> origin. See [Security & Deployment Posture](./docs/CONFIGURATION.md#security--deployment-posture).
 
 ## Documentation
 

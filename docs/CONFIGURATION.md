@@ -5,6 +5,7 @@ Complete reference for all configuration options in the Ask Render Anything Assi
 ## Table of Contents
 
 - [Environment Variables](#environment-variables)
+- [Security & Deployment Posture](#security--deployment-posture)
 - [Pipeline Configuration](#pipeline-configuration)
 - [Model Selection](#model-selection)
 - [RAG Configuration](#rag-configuration)
@@ -38,11 +39,11 @@ These have sensible defaults but can be customized:
 
 ```bash
 # Generation Settings
-MAX_TOKENS=2000                          # Answer generation token limit
+MAX_TOKENS=4000                          # Answer generation token limit
 
 # RAG Settings
-RAG_TOP_K=10                             # Number of documents to retrieve
-SIMILARITY_THRESHOLD=0.75                # Minimum similarity score (0-1)
+RAG_TOP_K=20                             # Number of documents to retrieve
+SIMILARITY_THRESHOLD=0.3                 # Minimum cosine similarity floor (0-1)
 BM25_WEIGHT=0.4                          # Weight for BM25 in hybrid search (0-1)
 
 # Embedding Settings
@@ -62,8 +63,40 @@ ENABLE_CACHING=true                      # Cache embeddings
 LOG_LEVEL=INFO                           # Logging verbosity (DEBUG, INFO, WARNING, ERROR)
 
 # Frontend Settings (for deployment)
-VITE_API_URL=http://localhost:8000       # Backend API URL
+NEXT_PUBLIC_API_URL=http://localhost:8000  # Backend API base origin (no trailing slash)
+
+# Deployment
+ENVIRONMENT=production                   # Logfire environment tag; set to `development` locally
 ```
+
+---
+
+## Security & Deployment Posture
+
+This is a **demo template**. It ships intentionally open so a one-click deploy just works,
+which means a few things you should understand (and tighten) before exposing a fork publicly:
+
+- **No authentication.** There is no login, API key, or session auth on any endpoint. History
+  is scoped only by an anonymous, client-generated `client_id` (a random UUID in the browser's
+  `localStorage`) — this separates users' views but is **not** a security boundary.
+- **`POST /ask` is unauthenticated and unthrottled, and it costs money.** Every call triggers
+  the full pipeline — OpenAI **and** Anthropic requests billed to your keys. If you deploy a
+  public fork, anyone who finds the URL can drive up your LLM bill. Before exposing it, add
+  authentication and/or rate limiting (e.g. [slowapi](https://github.com/laurentS/slowapi)
+  per-IP, or a per-`client_id` cap) in `backend/main.py`.
+- **CORS defaults to `*`.** `CORS_ORIGINS` defaults to a wildcard so the demo works from any
+  origin. This is safe *only* because credentials are disabled (`allow_credentials=False` in
+  `backend/main.py`), which is why browsers permit a wildcard origin at all. In production,
+  set `CORS_ORIGINS` to your frontend origin(s).
+- **Read endpoints are ownership-scoped.** `GET /history/{id}` and `GET /sessions/{id}/logs`
+  require the caller's `client_id` and only return a session that `client_id` owns — matching
+  the `DELETE` routes. Session IDs are unguessable UUIDs, but the scoping keeps reads and
+  deletes consistent.
+- **Secrets** live only in environment variables (never committed); `render.yaml` marks all
+  secrets `sync: false` so Render prompts for them on first apply.
+
+For a production deployment: add auth + rate limiting to `POST /ask`, set `CORS_ORIGINS` to
+your real origin, and set `ENVIRONMENT` appropriately so Logfire traces are grouped correctly.
 
 ---
 

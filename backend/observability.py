@@ -17,7 +17,7 @@ from backend.config import settings
 logfire.configure(
     token=settings.logfire_token,
     service_name="render-qa-assistant",
-    environment="production",
+    environment=settings.environment,
 )
 
 # Auto-instrument libraries globally

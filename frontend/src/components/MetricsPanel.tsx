@@ -11,13 +11,6 @@ export default function MetricsPanel({ answer }: MetricsPanelProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showCostBreakdown, setShowCostBreakdown] = useState(false)
 
-  // Debug: Log answer structure
-  console.log('MetricsPanel received answer:', {
-    has_stages: !!answer.stages,
-    stages_length: answer.stages?.length || 0,
-    stages: answer.stages
-  })
-
   const formatDuration = (ms: number) => {
     if (ms < 1000) return `${ms.toFixed(0)}ms`
     return `${(ms / 1000).toFixed(1)}s`
