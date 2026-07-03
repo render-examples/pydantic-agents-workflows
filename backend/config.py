@@ -41,14 +41,14 @@ class Settings(BaseSettings):
 
     # Render Workflows (gateway -> workflow service)
     render_api_key: str = ""  # Required to trigger/poll workflow runs
-    workflow_slug: str = ""  # e.g. "pydantic-agents-pipeline" (from the Workflow's Dashboard page)
+    workflow_slug: str = ""  # e.g. "pydantic-agents-workflow" (from the Workflow's Dashboard page)
     
     # Pipeline Configuration
     max_tokens: int = 4000  # Answer generation budget; raised from 2000 so broad answers aren't truncated
     timeout_seconds: int = 30
     
     # RAG Configuration
-    rag_top_k: int = 10  # Hard ceiling / backstop on retrieved docs. The adaptive relative
+    rag_top_k: int = 20  # Hard ceiling / backstop on retrieved docs. The adaptive relative
     # cutoff (see _apply_relative_cutoff) is what trims the tail per question; this just caps it.
     # Adaptive relevance cutoff: keep a doc only if its cosine similarity is >= this fraction
     # of the BEST match in the result set. Anchoring to the top match self-tunes per question —
@@ -73,8 +73,16 @@ class Settings(BaseSettings):
     # Performance
     enable_caching: bool = True
     log_level: str = "INFO"
+    # Deployment environment tag sent to Logfire (traces are grouped by it).
+    # Defaults to "production"; set ENVIRONMENT=development locally so dev traces
+    # aren't mixed into the production view.
+    environment: str = "production"
     
     # CORS
+    # Wildcard is the default so the deployed demo works from any origin. It is
+    # safe ONLY because credentials are disabled (see main.py: allow_credentials=False),
+    # which is why browsers permit a "*" origin at all. In production set
+    # CORS_ORIGINS to your frontend origin(s) if you tighten this.
     cors_origins: list[str] = ["*"]
 
     @model_validator(mode="after")

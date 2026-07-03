@@ -24,7 +24,7 @@ envVarGroups:
         sync: false
       # Pipeline configuration
       - key: MAX_TOKENS
-        value: "2000"
+        value: "4000"
       - key: TIMEOUT_SECONDS
         value: "30"
       # RAG configuration

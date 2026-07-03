@@ -41,15 +41,14 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
  * Ask a question via the Workflows-backed pipeline.
  *
  * The gateway triggers a Render Workflow run and we poll it for the result.
- * The pipeline runs out-of-band in the Workflow service, so token-by-token
- * answer streaming is unavailable (`onAnswerToken` is unused). The orchestrator
- * records real per-stage progress under a token, which we poll alongside the
- * run status and replay through `onProgress` as each new stage lands.
+ * The pipeline runs out-of-band in the Workflow service, so there is no
+ * token-by-token answer streaming. The orchestrator records real per-stage
+ * progress under a token, which we poll alongside the run status and replay
+ * through `onProgress` as each new stage lands.
  */
 export async function askQuestion(
   question: string,
   onProgress?: (update: ProgressUpdate) => void,
-  _onAnswerToken?: (delta: string) => void,
   signal?: AbortSignal
 ): Promise<AnswerResponse> {
   // 1. Trigger the workflow run.
@@ -208,7 +207,9 @@ export interface SessionLogsResponse {
 }
 
 export async function getSessionLogs(sessionId: string): Promise<SessionLogsResponse> {
-  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/logs`)
+  const response = await fetch(
+    `${API_BASE_URL}/sessions/${sessionId}/logs?client_id=${encodeURIComponent(getClientId())}`
+  )
   
   if (!response.ok) {
     if (response.status === 404) {

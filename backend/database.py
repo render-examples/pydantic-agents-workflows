@@ -635,21 +635,26 @@ class VectorStore:
             
             return sessions
     
-    async def get_session_by_id(self, session_id: str) -> Optional[dict]:
-        """Get a specific Q&A session by ID."""
-        
+    async def get_session_by_id(self, session_id: str, client_id: str) -> Optional[dict]:
+        """Get a Q&A session by ID, scoped to its owning client.
+
+        A session that exists but belongs to another client (or a legacy
+        NULL-owner row) is treated as not-found — the same ownership rule
+        ``delete_session`` enforces.
+        """
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
-                SELECT 
+                SELECT
                     id, question, answer, sources, claims, evaluations,
                     quality_score, total_cost, total_duration_ms,
                     created_at, trace_id, stages
                 FROM qa_sessions
-                WHERE id = $1
-            """, session_id)
+                WHERE id = $1 AND client_id = $2
+            """, session_id, client_id)
             
             if not row:
                 return None

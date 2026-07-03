@@ -226,15 +226,19 @@ async def get_history(client_id: str, limit: int = 20):
 
 
 @app.get("/history/{session_id}", tags=["Q&A"])
-async def get_session(session_id: str):
+async def get_session(session_id: str, client_id: str):
     """
-    Get a specific Q&A session by ID.
+    Get a specific Q&A session by ID, scoped to the calling client.
 
     Args:
         session_id: The UUID of the session
+        client_id: Anonymous browser client ID that must own the session
     """
 
-    session = await vector_store.get_session_by_id(session_id)
+    if not client_id:
+        raise HTTPException(status_code=400, detail="client_id is required")
+
+    session = await vector_store.get_session_by_id(session_id, client_id)
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -291,15 +295,22 @@ async def clear_all_history(client_id: str):
 
 
 @app.get("/sessions/{session_id}/logs", tags=["Observability"])
-async def get_session_logs(session_id: str):
+async def get_session_logs(session_id: str, client_id: str):
     """
-    Fetch Logfire logs for a specific Q&A session.
+    Fetch Logfire logs for a specific Q&A session, scoped to the calling client.
 
     Returns detailed observability logs from Logfire for the given session,
     including all spans, traces, and metrics captured during execution.
+
+    Args:
+        session_id: The UUID of the session
+        client_id: Anonymous browser client ID that must own the session
     """
-    # Get session from database to retrieve trace_id
-    session = await vector_store.get_session_by_id(session_id)
+    if not client_id:
+        raise HTTPException(status_code=400, detail="client_id is required")
+
+    # Get session from database to retrieve trace_id (scoped to the owning client)
+    session = await vector_store.get_session_by_id(session_id, client_id)
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
