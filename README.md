@@ -313,7 +313,7 @@ Blueprints (`render.yaml`) can't create Workflows yet, so do this once in the Da
 
 | Field | Value |
 |---|---|
-| **Name** | `pydantic-agents-workflow` (this becomes the workflow slug) |
+| **Name** | `pydantic-agents-workflows` (this becomes the workflow slug) |
 | **Project / Environment** | Same project + `production` environment as the rest of the stack |
 | **Language / Runtime** | `Python 3` |
 | **Branch** | `main` (or the branch you deploy) |
@@ -345,7 +345,7 @@ The group's four secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LOGFIRE_TOKEN`
 `LOGFIRE_READ_TOKEN`) are set once when applying the Blueprint (step 2) and reused here by linking the group — the first three are required and the service crashes on startup without them (no defaults in [`backend/config.py`](./backend/config.py)).
 
 
-**3d. Copy the workflow slug** (shown on the Dashboard page / in its URL, e.g. `pydantic-agents-workflow`). You'll set it as `WORKFLOW_SLUG` in the `pydantic-agents-workflows-pipeline-trigger` group in step 4, which the gateway and cron
+**3d. Copy the workflow slug** (shown on the Dashboard page / in its URL, e.g. `pydantic-agents-workflows`). You'll set it as `WORKFLOW_SLUG` in the `pydantic-agents-workflows-pipeline-trigger` group in step 4, which the gateway and cron
 both inherit.
 
 ### 4. Fill in the env-group values
@@ -369,7 +369,7 @@ exists (step 3):
 | Variable | Source |
 |---|---|
 | `RENDER_API_KEY` | [Render Account Settings → API Keys](https://dashboard.render.com/settings#api-keys) |
-| `WORKFLOW_SLUG` | The Workflows service slug from step 3 (e.g. `pydantic-agents-workflow`) |
+| `WORKFLOW_SLUG` | The Workflows service slug from step 3 (e.g. `pydantic-agents-workflows`) |
 
 > Edit a group under **Dashboard → Env Groups → `<group>`**. Saving re-deploys every service
 > linked to it, so the gateway and cron both pick up `WORKFLOW_SLUG` from a single edit.

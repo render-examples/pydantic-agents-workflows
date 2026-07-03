@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Render Workflows (gateway -> workflow service)
     render_api_key: str = ""  # Required to trigger/poll workflow runs
-    workflow_slug: str = ""  # e.g. "pydantic-agents-workflow" (from the Workflow's Dashboard page)
+    workflow_slug: str = ""  # e.g. "pydantic-agents-workflows" (from the Workflow's Dashboard page)
     
     # Pipeline Configuration
     max_tokens: int = 4000  # Answer generation budget; raised from 2000 so broad answers aren't truncated
