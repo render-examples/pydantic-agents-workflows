@@ -32,6 +32,7 @@ from render_sdk.client.types import TaskRunStatusValues
 from backend.config import settings
 from backend.models import QuestionRequest, HealthCheck
 from backend.database import vector_store
+from backend.api.dependencies import ClientId
 from backend.api.logs import fetch_logfire_logs
 
 
@@ -202,7 +203,7 @@ async def get_stats():
 
 
 @app.get("/history", tags=["Q&A"])
-async def get_history(client_id: str, limit: int = 20):
+async def get_history(client_id: ClientId, limit: int = 20):
     """
     Get recent Q&A sessions for the calling browser client.
 
@@ -210,9 +211,6 @@ async def get_history(client_id: str, limit: int = 20):
         client_id: Anonymous browser client ID to scope history to.
         limit: Maximum number of sessions to return (default: 20, max: 100)
     """
-
-    if not client_id:
-        raise HTTPException(status_code=400, detail="client_id is required")
 
     if limit > 100:
         raise HTTPException(status_code=400, detail="Limit cannot exceed 100")
@@ -226,7 +224,7 @@ async def get_history(client_id: str, limit: int = 20):
 
 
 @app.get("/history/{session_id}", tags=["Q&A"])
-async def get_session(session_id: str, client_id: str):
+async def get_session(session_id: str, client_id: ClientId):
     """
     Get a specific Q&A session by ID, scoped to the calling client.
 
@@ -234,9 +232,6 @@ async def get_session(session_id: str, client_id: str):
         session_id: The UUID of the session
         client_id: Anonymous browser client ID that must own the session
     """
-
-    if not client_id:
-        raise HTTPException(status_code=400, detail="client_id is required")
 
     session = await vector_store.get_session_by_id(session_id, client_id)
 
@@ -247,7 +242,7 @@ async def get_session(session_id: str, client_id: str):
 
 
 @app.delete("/history/{session_id}", tags=["Q&A"])
-async def delete_session(session_id: str, client_id: str):
+async def delete_session(session_id: str, client_id: ClientId):
     """
     Delete a specific Q&A session by ID, scoped to the calling client.
 
@@ -255,9 +250,6 @@ async def delete_session(session_id: str, client_id: str):
         session_id: The UUID of the session to delete
         client_id: Anonymous browser client ID that must own the session
     """
-
-    if not client_id:
-        raise HTTPException(status_code=400, detail="client_id is required")
 
     deleted = await vector_store.delete_session(session_id, client_id)
 
@@ -272,7 +264,7 @@ async def delete_session(session_id: str, client_id: str):
 
 
 @app.delete("/history", tags=["Q&A"])
-async def clear_all_history(client_id: str):
+async def clear_all_history(client_id: ClientId):
     """
     Delete all Q&A sessions owned by the calling client.
 
@@ -281,9 +273,6 @@ async def clear_all_history(client_id: str):
     Args:
         client_id: Anonymous browser client ID whose history is cleared
     """
-
-    if not client_id:
-        raise HTTPException(status_code=400, detail="client_id is required")
 
     deleted_count = await vector_store.delete_all_sessions(client_id)
 
@@ -295,7 +284,7 @@ async def clear_all_history(client_id: str):
 
 
 @app.get("/sessions/{session_id}/logs", tags=["Observability"])
-async def get_session_logs(session_id: str, client_id: str):
+async def get_session_logs(session_id: str, client_id: ClientId):
     """
     Fetch Logfire logs for a specific Q&A session, scoped to the calling client.
 
@@ -306,9 +295,6 @@ async def get_session_logs(session_id: str, client_id: str):
         session_id: The UUID of the session
         client_id: Anonymous browser client ID that must own the session
     """
-    if not client_id:
-        raise HTTPException(status_code=400, detail="client_id is required")
-
     # Get session from database to retrieve trace_id (scoped to the owning client)
     session = await vector_store.get_session_by_id(session_id, client_id)
 
