@@ -155,13 +155,17 @@ def _stage_result(
 # isolation instead of failing the orchestrator and re-running the expensive
 # generation from the top. All run on `standard` (the default) — the heavy
 # compute is on the LLM provider, so the instance just holds an HTTP call + text.
+#
+# Each subtask takes a trailing `trace_context` carrier that the body ignores —
+# it's read by `@with_trace_context` (not the function) to join the shared
+# `qa_pipeline` trace. See that decorator for details.
 # ---------------------------------------------------------------------------
 
 @app.task(timeout_seconds=120, retry=Retry(max_retries=3, wait_duration_ms=2000, backoff_scaling=2.0))
 @with_trace_context
 @flush_on_exit
 async def generate_answer_task(
-    question: str, documents_json: list[dict], trace_context: dict | None = None
+    question: str, documents_json: list[dict], trace_context: dict[str, str] | None = None
 ) -> dict:
     """Subtask: answer generation (Claude). Most expensive + most rate-limit-prone."""
     await _ensure_ready()
@@ -172,7 +176,7 @@ async def generate_answer_task(
 @app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
 @with_trace_context
 @flush_on_exit
-async def extract_claims_task(answer: str, trace_context: dict | None = None) -> dict:
+async def extract_claims_task(answer: str, trace_context: dict[str, str] | None = None) -> dict:
     """Subtask: claims extraction (OpenAI). Returns JSON-native claims + cost."""
     await _ensure_ready()
     return await extract_claims(answer)
@@ -181,7 +185,7 @@ async def extract_claims_task(answer: str, trace_context: dict | None = None) ->
 @app.task(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
 @with_trace_context
 @flush_on_exit
-async def verify_claims_task(claims: list[str], trace_context: dict | None = None) -> dict:
+async def verify_claims_task(claims: list[str], trace_context: dict[str, str] | None = None) -> dict:
     """Subtask: claims verification. Keeps its internal per-claim asyncio.gather
     (embedding lookups are ms-scale; per-claim fan-out would be slower/costlier)."""
     await _ensure_ready(db=True)
@@ -198,7 +202,7 @@ async def verify_claims_task(claims: list[str], trace_context: dict | None = Non
 @with_trace_context
 @flush_on_exit
 async def check_accuracy_task(
-    answer: str, claims_json: list[dict], trace_context: dict | None = None
+    answer: str, claims_json: list[dict], trace_context: dict[str, str] | None = None
 ) -> dict:
     """Subtask: technical-accuracy check (Claude)."""
     await _ensure_ready()
@@ -224,7 +228,7 @@ async def _rate_quality(rater, question: str, answer: str, doc_count: int) -> di
 @with_trace_context
 @flush_on_exit
 async def rate_quality_openai_task(
-    question: str, answer: str, doc_count: int, trace_context: dict | None = None
+    question: str, answer: str, doc_count: int, trace_context: dict[str, str] | None = None
 ) -> dict:
     """Subtask: OpenAI quality judge (runs on its own instance, parallel to Claude judge)."""
     return await _rate_quality(evaluate_with_openai, question, answer, doc_count)
@@ -234,7 +238,7 @@ async def rate_quality_openai_task(
 @with_trace_context
 @flush_on_exit
 async def rate_quality_anthropic_task(
-    question: str, answer: str, doc_count: int, trace_context: dict | None = None
+    question: str, answer: str, doc_count: int, trace_context: dict[str, str] | None = None
 ) -> dict:
     """Subtask: Claude quality judge (runs on its own instance, parallel to OpenAI judge)."""
     return await _rate_quality(evaluate_with_anthropic, question, answer, doc_count)
