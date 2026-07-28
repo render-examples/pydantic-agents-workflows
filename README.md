@@ -81,53 +81,52 @@ This project is built end-to-end on the [Pydantic](https://pydantic.dev/) ecosys
 
 ## Architecture
 
-The frontend connects to a backend FastAPI gateway that triggers a **Render Workflows** run and polls it for the result. The 7-stage pipeline and ingestion execute as workflow tasks that fan out across instances.
+Only the static site and the `api` gateway are public. The gateway triggers **Render Workflows** runs over the Render SDK and polls them for results; the workflows service is private and never HTTP-facing. Both talk to one managed Postgres, and both call out to your LLM providers with your own API keys.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Frontend (Next.js + TypeScript)                            │
-│  Deployed as: Render Static Site                            │
-│  - Question input UI                                        │
-│  - Progress via polling (POST /ask → poll GET /ask/{id})    │
-│  - Answer display with metrics                              │
-└─────────────────────────────────────────────────────────────┘
-                          ↓ HTTPS
-┌─────────────────────────────────────────────────────────────┐
-│  API Gateway (FastAPI + Logfire)                            │
-│  Deployed as: Render Web Service (Python 3.13)              │
-│  - POST /ask        → start_task("…/run_qa_pipeline")       │
-│  - GET  /ask/{id}   → get_task_run(id) (poll status/result) │
-│  - /health, /history, /stats, /sessions/{id}/logs           │
-└─────────────────────────────────────────────────────────────┘
-            ↓ Render SDK (start_task / get_task_run)
-┌─────────────────────────────────────────────────────────────┐
-│  Render Workflows service  (Python 3.13)                    │
-│  Orchestrator: run_qa_pipeline                              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ Retrieval  [1] Question Embedding  (OpenAI)  in-process │ │
-│  │            [2] RAG Retrieval (pgvector+BM25)  in-process │ │
-│  │ Generate   [3] Answer Generation   (Claude)   ⟶ subtask  │ │
-│  │ Grounding  [4] Claims Extraction   (GPT)      ⟶ subtask  │ │
-│  │            [5] Claims Verification (RAG)       ⟶ subtask  │ │
-│  │ Accuracy   [6] Factual-grounding   (Claude) ┐            │ │
-│  │ Quality    [7] Dual-model rating   (OpenAI+ ├─ 3 parallel│ │
-│  │                                    Anthropic)┘  subtasks  │ │
-│  └────────────────────────────────────────────────────────┘ │
-│  Ingestion: ingest_all → ingest_core, then ingest_source    │
-│             fanned out over the source registry             │
-└─────────────────────────────────────────────────────────────┘
-            ↓                                    ↓
-┌──────────────────────┐           ┌───────────────────────────┐
-│  PostgreSQL          │           │  Logfire                  │
-│  (Render Managed)    │           │  (Pydantic)               │
-│  - pgvector ext      │           │  - Distributed traces     │
-│  - RAG embeddings    │           │  - Cost attribution       │
-│  - Full-text search  │           │  - Quality metrics        │
-└──────────────────────┘           │  - Custom dashboards      │
-                                   └───────────────────────────┘
-
-  Cron (daily) ─ start_task("…/ingest_all") ─▶ Workflows service
+                      ┌────────────────────────────────────────────┐
+      Internet  ───►  │  frontend  (Next.js · Render static site)  │
+                      └─────────────────────┬──────────────────────┘
+                                            │ HTTPS
+                      ┌─────────────────────▼──────────────────────┐
+                      │  api  (FastAPI · public web service)       │
+                      │  POST /ask  ·  GET /ask/{run_id}           │
+                      └─────────────────────┬──────────────────────┘
+                                            │ Render SDK
+                                            │ start_task · get_task_run
+                      ┌─────────────────────▼──────────────────────┐
+   Cron (daily) ───►  │  workflows  (private · Python 3.13)        │
+                      │  run_qa_pipeline  ·  ingest_all            │
+                      └──────┬──────────────────────────────┬──────┘
+                      ┌──────▼──────────────┐  ┌────────────▼───────────────┐
+                      │  postgres           │  │  external APIs (your keys) │
+                      │  (Render Managed 17)│  │  OpenAI · Anthropic        │
+                      │  pgvector · BM25    │  │  Logfire (traces + evals)  │
+                      └─────────────────────┘  └────────────────────────────┘
 ```
+
+The `api` service also reads Postgres directly — live run progress (the orchestrator writes
+stage updates there, and `GET /ask/{run_id}` reads them back), plus `/history`, `/stats`, and
+`/sessions/{id}/logs`. The workflows service is created in the Dashboard rather than in
+[`render.yaml`](./render.yaml); everything else in the diagram is Blueprint-managed.
+
+### Pipeline stages
+
+`run_qa_pipeline` orchestrates seven stages, promoting only the expensive ones to their own tasks:
+
+| # | Stage | Model | Execution |
+|---|-------|-------|-----------|
+| 1 | Question embedding | OpenAI embeddings | in-process |
+| 2 | Hybrid retrieval (pgvector + BM25, LLM multi-query expansion) | `gpt-4.1-nano` | in-process |
+| 3 | Answer generation | Claude | subtask (3 retries) |
+| 4 | Claims extraction | GPT | subtask |
+| 5 | Claims verification (RAG) | OpenAI embeddings | subtask |
+| 6 | Factual-grounding check | Claude | subtask, parallel with 7 |
+| 7 | Dual-model quality rating | OpenAI + Anthropic | 2 subtasks, parallel with 6 |
+
+Ingestion runs the same way: `ingest_all` → `ingest_core`, then `ingest_source` fanned out over
+the source registry in [`data/sources.py`](./data/sources.py). A daily cron job triggers it, and
+the `api` service re-seeds pre-embedded pages in its `preDeployCommand`.
 
 > **Why hybrid?** Workflows aren't HTTP-facing, so a client (the gateway) triggers tasks
 > via the SDK and reads run status. Stages 1 and 2 are cheap/data-dependent and stay
