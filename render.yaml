@@ -130,9 +130,19 @@ projects:
             staticPublishPath: out
             pullRequestPreviewsEnabled: true
             envVars:
-              # API URL - set to the backend service's public URL after first deploy
+              # API URL - auto-injected from the backend service's public URL.
+              # `fromService` + `envVarKey` pulls Render's auto-injected
+              # RENDER_EXTERNAL_URL (https://<slug>-XXXX.onrender.com), resolved
+              # at build time before this static site builds — so NEXT_PUBLIC_API_URL
+              # is baked into the bundle with the real, suffix-included URL (no
+              # manual post-deploy step, no guessing the -XXXX suffix). This works
+              # without a cyclic dependency because the backend defaults CORS to
+              # "*" and does not reference this frontend's URL (one-directional).
               - key: NEXT_PUBLIC_API_URL
-                sync: false
+                fromService:
+                  name: pydantic-agents-workflows-api
+                  type: web
+                  envVarKey: RENDER_EXTERNAL_URL
             routes:
               - type: rewrite
                 source: /*
