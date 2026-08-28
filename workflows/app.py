@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import logfire
 from opentelemetry import context as otel_context
 from opentelemetry.propagate import extract, inject
-from render_sdk import Retry, Workflows
+from render import Retry, TaskContext, Workflows
 
 # Importing observability configures Logfire at module load (same as the web app).
 from backend.observability import pipeline_trace, track_pipeline_metrics
@@ -156,16 +156,22 @@ def _stage_result(
 # generation from the top. All run on `standard` (the default) — the heavy
 # compute is on the LLM provider, so the instance just holds an HTTP call + text.
 #
-# Each subtask takes a trailing `trace_context` carrier that the body ignores —
-# it's read by `@with_trace_context` (not the function) to join the shared
-# `qa_pipeline` trace. See that decorator for details.
+# Every task takes a `TaskContext` first (the SDK supplies it) and is scheduled
+# with `await ctx.run(task, ...)`, which runs it on its own instance.
+#
+# Each subtask also takes a trailing `trace_context` carrier that the body
+# ignores — it's read by `@with_trace_context` (not the function) to join the
+# shared `qa_pipeline` trace. See that decorator for details.
 # ---------------------------------------------------------------------------
 
 @app.task(timeout_seconds=120, retry=Retry(max_retries=3, wait_duration_ms=2000, backoff_scaling=2.0))
 @with_trace_context
 @flush_on_exit
 async def generate_answer_task(
-    question: str, documents_json: list[dict], trace_context: dict[str, str] | None = None
+    ctx: TaskContext,
+    question: str,
+    documents_json: list[dict],
+    trace_context: dict[str, str] | None = None,
 ) -> dict:
     """Subtask: answer generation (Claude). Most expensive + most rate-limit-prone."""
     await _ensure_ready()
@@ -176,7 +182,9 @@ async def generate_answer_task(
 @app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
 @with_trace_context
 @flush_on_exit
-async def extract_claims_task(answer: str, trace_context: dict[str, str] | None = None) -> dict:
+async def extract_claims_task(
+    ctx: TaskContext, answer: str, trace_context: dict[str, str] | None = None
+) -> dict:
     """Subtask: claims extraction (OpenAI). Returns JSON-native claims + cost."""
     await _ensure_ready()
     return await extract_claims(answer)
@@ -185,7 +193,9 @@ async def extract_claims_task(answer: str, trace_context: dict[str, str] | None 
 @app.task(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
 @with_trace_context
 @flush_on_exit
-async def verify_claims_task(claims: list[str], trace_context: dict[str, str] | None = None) -> dict:
+async def verify_claims_task(
+    ctx: TaskContext, claims: list[str], trace_context: dict[str, str] | None = None
+) -> dict:
     """Subtask: claims verification. Keeps its internal per-claim asyncio.gather
     (embedding lookups are ms-scale; per-claim fan-out would be slower/costlier)."""
     await _ensure_ready(db=True)
@@ -202,7 +212,10 @@ async def verify_claims_task(claims: list[str], trace_context: dict[str, str] | 
 @with_trace_context
 @flush_on_exit
 async def check_accuracy_task(
-    answer: str, claims_json: list[dict], trace_context: dict[str, str] | None = None
+    ctx: TaskContext,
+    answer: str,
+    claims_json: list[dict],
+    trace_context: dict[str, str] | None = None,
 ) -> dict:
     """Subtask: technical-accuracy check (Claude)."""
     await _ensure_ready()
@@ -228,7 +241,11 @@ async def _rate_quality(rater, question: str, answer: str, doc_count: int) -> di
 @with_trace_context
 @flush_on_exit
 async def rate_quality_openai_task(
-    question: str, answer: str, doc_count: int, trace_context: dict[str, str] | None = None
+    ctx: TaskContext,
+    question: str,
+    answer: str,
+    doc_count: int,
+    trace_context: dict[str, str] | None = None,
 ) -> dict:
     """Subtask: OpenAI quality judge (runs on its own instance, parallel to Claude judge)."""
     return await _rate_quality(evaluate_with_openai, question, answer, doc_count)
@@ -238,7 +255,11 @@ async def rate_quality_openai_task(
 @with_trace_context
 @flush_on_exit
 async def rate_quality_anthropic_task(
-    question: str, answer: str, doc_count: int, trace_context: dict[str, str] | None = None
+    ctx: TaskContext,
+    question: str,
+    answer: str,
+    doc_count: int,
+    trace_context: dict[str, str] | None = None,
 ) -> dict:
     """Subtask: Claude quality judge (runs on its own instance, parallel to OpenAI judge)."""
     return await _rate_quality(evaluate_with_anthropic, question, answer, doc_count)
@@ -251,6 +272,7 @@ async def rate_quality_anthropic_task(
 @app.task(timeout_seconds=600)
 @flush_on_exit
 async def run_qa_pipeline(
+    ctx: TaskContext,
     question: str,
     session_id: str | None = None,
     client_id: str | None = None,
@@ -350,7 +372,8 @@ async def run_qa_pipeline(
 
         # --- Generate phase: the expensive Claude call as a retried subtask ---
         await emit("generation", "started", "Generating answer...", 28, total_cost)
-        gen_result = await generate_answer_task(
+        gen_result = await ctx.run(
+            generate_answer_task,
             question=question,
             documents_json=documents_to_json(documents),
             trace_context=trace_carrier,
@@ -369,7 +392,9 @@ async def run_qa_pipeline(
         # --- Grounding phase: extract claims, then verify them against sources ---
         # Claims extraction (own retried task)
         await emit("claims", "started", "Extracting factual claims...", 43, total_cost)
-        claims_result = await extract_claims_task(answer=answer_text, trace_context=trace_carrier)
+        claims_result = await ctx.run(
+            extract_claims_task, answer=answer_text, trace_context=trace_carrier
+        )
         stages.append(_stage_result(
             "claims_extraction",
             cost_usd=claims_result["cost_usd"],
@@ -385,8 +410,10 @@ async def run_qa_pipeline(
 
         # Claims verification (own task; per-claim gather stays in-process inside it)
         await emit("verification", "started", "Verifying claims...", 55, total_cost)
-        verification_result = await verify_claims_task(
-            claims=claims_result["claims"], trace_context=trace_carrier
+        verification_result = await ctx.run(
+            verify_claims_task,
+            claims=claims_result["claims"],
+            trace_context=trace_carrier,
         )
         verified_claims = claims_from_json(verification_result["verified_claims"])
         verification_rate = verification_result["verification_rate"] * 100
@@ -419,18 +446,21 @@ async def run_qa_pipeline(
         )
         stage_start = time.time()
         accuracy_result, openai_rate, anthropic_rate = await asyncio.gather(
-            check_accuracy_task(
+            ctx.run(
+                check_accuracy_task,
                 answer=answer_text,
                 claims_json=claims_to_json(verified_claims),
                 trace_context=trace_carrier,
             ),
-            rate_quality_openai_task(
+            ctx.run(
+                rate_quality_openai_task,
                 question=question,
                 answer=answer_text,
                 doc_count=len(documents),
                 trace_context=trace_carrier,
             ),
-            rate_quality_anthropic_task(
+            ctx.run(
+                rate_quality_anthropic_task,
                 question=question,
                 answer=answer_text,
                 doc_count=len(documents),
@@ -556,7 +586,7 @@ async def _persist_session(response: AnswerResponse, client_id: str | None = Non
 
 @app.task(timeout_seconds=1800)
 @flush_on_exit
-async def ingest_core() -> dict:
+async def ingest_core(ctx: TaskContext) -> dict:
     """Core documentation ingest (additive sync). Establishes the base schema/rows.
 
     Loads the pre-embedded corpus (``data/embeddings/render_docs.json``, built
@@ -571,7 +601,7 @@ async def ingest_core() -> dict:
 
 @app.task(retry=Retry(max_retries=2, wait_duration_ms=1000))
 @flush_on_exit
-async def ingest_source(name: str) -> dict:
+async def ingest_source(ctx: TaskContext, name: str) -> dict:
     """Ingest one live source end-to-end: build → embed → replace-by-source.
 
     ``name`` is a key in the ``data.sources.SOURCES`` registry. Each source is an
@@ -587,7 +617,7 @@ async def ingest_source(name: str) -> dict:
 
 @app.task(timeout_seconds=3600)
 @flush_on_exit
-async def ingest_all() -> dict:
+async def ingest_all(ctx: TaskContext) -> dict:
     """Run the full ingestion: core sync, then the live sources fanned out.
 
     ``ingest_core`` runs first to establish the base schema/rows, then every
@@ -595,10 +625,10 @@ async def ingest_all() -> dict:
     replacing the old 7-script sequential ``&&`` chain (and the six
     near-identical ``add_*`` tasks).
     """
-    core = await ingest_core()
+    core = await ctx.run(ingest_core)
 
     page_results = await asyncio.gather(
-        *(ingest_source(name) for name in SOURCES)
+        *(ctx.run(ingest_source, name) for name in SOURCES)
     )
 
     return {"core": core, "pages": list(page_results)}
