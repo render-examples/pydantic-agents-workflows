@@ -1,9 +1,8 @@
 """Model pricing via the official ``genai-prices`` package.
 
-We previously fetched and parsed the raw genai-prices YAML ourselves, which broke
-on tiered/constraint-based price schemas and made a network call on every task.
 The package ships auto-updated price data bundled for fully offline use, so cost
-calculation is a single in-process lookup with no network dependency.
+calculation is a single in-process lookup with no network call. It also handles
+the tiered and constraint-based price schemas that a raw YAML parse chokes on.
 """
 
 import logfire

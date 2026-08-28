@@ -10,7 +10,7 @@ Requires ``RENDER_API_KEY`` and ``WORKFLOW_SLUG`` in the environment.
 import os
 import sys
 
-from render_sdk import Render
+from render import Render
 
 
 def main() -> None:

@@ -25,9 +25,9 @@ import logfire
 # Importing observability configures Logfire + instrumentation at module load.
 import backend.observability  # noqa: F401
 
-from render_sdk import RenderAsync
-from render_sdk.client.errors import RenderError
-from render_sdk.client.types import TaskRunStatusValues
+from render import RenderAsync
+from render.client.errors import RenderError
+from render.client.types import TaskRunStatusValues
 
 from backend.config import settings
 from backend.models import QuestionRequest, HealthCheck

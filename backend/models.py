@@ -33,7 +33,6 @@ class ClaimVerdict(BaseModel):
 
     The verifier reads a single claim plus the candidate documentation passages
     retrieved for it and decides whether the docs actually substantiate the claim.
-    This replaces the old top-1 cosine-similarity proxy with a real grounding check.
     """
     supported: bool = Field(..., description="True only if a passage directly substantiates the claim")
     confidence: float = Field(..., ge=0.0, le=1.0, description="How directly the passages support the claim (0-1)")
