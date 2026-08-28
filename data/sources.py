@@ -2,10 +2,8 @@
 
 Each :class:`Source` knows how to *build* its documents — the only part that
 varies between sources. Embedding and the delete-by-source upsert are handled
-uniformly by :mod:`backend.ingestion`. This registry replaces the six
-near-identical ``data/scripts/add_*_page.py`` scripts: adding a source is now a
-registry entry (plus, for curated pages, a markdown file in ``data/curated/``),
-not a new script.
+uniformly by :mod:`backend.ingestion`. Adding a source means adding a registry
+entry, plus a markdown file in ``data/curated/`` for a curated page.
 
 Three build strategies cover every live source:
 
@@ -64,9 +62,8 @@ def _curated_build(
     Section-level chunks keep the heading vocabulary ("Pricing", "Beta Limitations")
     with the body, so the claim matches the section that actually states it.
 
-    The curated content is hand-structured for semantic retrieval, so (unlike the
-    old scripts) we don't make a throwaway live fetch — the result was always
-    discarded in favor of the curated text anyway.
+    The curated content is hand-structured for semantic retrieval, so ``build``
+    makes no live fetch. The markdown file is what gets embedded.
 
     ``section`` is retained as a fallback for files with no headings (the chunker
     then falls back to size-based ``chunk_document``).

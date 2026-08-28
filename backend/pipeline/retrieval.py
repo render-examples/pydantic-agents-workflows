@@ -95,10 +95,9 @@ TUTORIALS_INDEX_SOURCE = "https://render.com/tutorials"
 # Curated document injection — data-driven
 #
 # Certain topics have an authoritative doc we always want in context, even if
-# semantic search ranks it low. Rather than a detect_*/inject_* function pair per
-# topic (all duplicating the same fetch → parse-metadata → prepend boilerplate),
-# the topics are declared as data in INJECTION_RULES and a single helper
-# (inject_curated_docs) does the work. Add a topic by adding a row, not a function.
+# semantic search ranks it low. The topics are declared as data in
+# INJECTION_RULES and a single helper (inject_curated_docs) does the
+# fetch → parse-metadata → prepend work. Add a topic by adding a row.
 # ---------------------------------------------------------------------------
 
 
@@ -144,7 +143,7 @@ INJECTION_RULES = (
     ),
     InjectionRule(
         name="tutorials",
-        # "tutorial"/"tutorials" matched with word boundaries (as the old code did).
+        # "tutorial"/"tutorials" matched with word boundaries.
         word_keywords=tuple(TUTORIALS_KEYWORDS),
         lookups=(DocLookup(source=TUTORIALS_INDEX_SOURCE),),
     ),
@@ -295,8 +294,8 @@ async def inject_curated_docs(question: str, existing_docs: List[Document]) -> L
     """
     Ensure the canonical doc for a matched topic is present — without padding the count.
 
-    Data-driven replacement for the old per-topic detect_*/inject_* pairs: every rule
-    (plus pricing's product logic) funnels through one fetch → parse → build path.
+    Every rule (plus pricing's product logic) funnels through one
+    fetch → parse → build path.
 
     Policy (replace-weakest, never grow past rag_top_k):
       - If a topic's curated doc was already retrieved, leave it — retrieval found it.

@@ -10,11 +10,11 @@ Two families of tasks live here, both thin wrappers over existing code:
   question). It runs the data-dependent stages in-process (cheap I/O-bound
   calls that ``asyncio.gather`` already overlaps for free) and fans out only
   the two heaviest LLM stages — technical accuracy and dual-model evaluation —
-  as parallel subtasks, where cross-instance parallelism actually beats the
+  as parallel subtasks, where cross-instance parallelism outweighs the
   per-run spin-up cost.
 
-* **Ingestion** — ``ingest_all`` replaces the old sequential ``preDeployCommand``
-  by fanning out the independent document-injection scripts in parallel.
+* **Ingestion** — ``ingest_all`` fans the independent per-source ingests out
+  across parallel subtasks.
 """
 
 from __future__ import annotations
@@ -577,9 +577,9 @@ async def _persist_session(response: AnswerResponse, client_id: str | None = Non
 # Ingestion — source-oriented, data-driven
 #
 # Every live source is the same shape — build docs → embed → replace-by-source —
-# so it's modeled as ONE parameterized task driven by the `SOURCES` registry,
-# not six near-identical scripts/tasks. `ingest_source` is the meaningful unit of
-# work (independently retryable per source); `ingest_all` fans them out, where
+# so one parameterized task driven by the `SOURCES` registry covers all of them.
+# `ingest_source` is the meaningful unit of work (independently retryable per
+# source); `ingest_all` fans them out, where
 # the heavier sources (pricing's multi-table parse, the tutorials crawl) make
 # cross-instance parallelism worth the spin-up.
 # ---------------------------------------------------------------------------
@@ -621,9 +621,7 @@ async def ingest_all(ctx: TaskContext) -> dict:
     """Run the full ingestion: core sync, then the live sources fanned out.
 
     ``ingest_core`` runs first to establish the base schema/rows, then every
-    source in the registry is ingested concurrently via ``ingest_source`` —
-    replacing the old 7-script sequential ``&&`` chain (and the six
-    near-identical ``add_*`` tasks).
+    source in the registry is ingested concurrently via ``ingest_source``.
     """
     core = await ctx.run(ingest_core)
 

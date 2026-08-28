@@ -19,6 +19,6 @@ def require_client_id(client_id: str) -> str:
     return client_id
 
 
-# Annotated alias so scoped routes can declare ``client_id: ClientId`` and share a
-# single validation path instead of hand-rolling the guard in every handler.
+# Annotated alias so scoped routes can declare ``client_id: ClientId`` and share
+# one validation path.
 ClientId = Annotated[str, Depends(require_client_id)]

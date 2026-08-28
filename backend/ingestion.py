@@ -1,9 +1,8 @@
 """Shared helpers for ingesting live sources into the RAG vector store.
 
 Every live source follows the same shape — *build* its documents, *embed* them,
-then *replace* the source's rows transactionally. These two helpers centralize
-the embed loop and the delete-by-source + insert block that used to be
-copy-pasted across all six ``data/scripts/add_*_page.py`` files.
+then *replace* the source's rows transactionally. These two helpers hold the
+embed loop and the delete-by-source + insert block that every source shares.
 
 A "doc" is a plain dict produced by a source builder (see ``data/sources.py``):
 
@@ -25,8 +24,7 @@ from backend.pipeline.embeddings import embed_question
 
 Doc = dict[str, Any]
 
-# Docs shorter than this are skipped — too small to be useful (matches the
-# per-script guard the old add_* scripts applied before inserting).
+# Docs shorter than this are skipped — too small to be useful.
 MIN_CONTENT_CHARS = 100
 
 # Optional inter-embedding delay. 0 by default (the live sources embed only a
