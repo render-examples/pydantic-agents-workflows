@@ -1,15 +1,11 @@
 # Reusable environment variable groups.
 #
-# `pydantic-agents-workflows-pipeline` is the single source of truth for the Q&A pipeline config
-# (LLM/Logfire secrets + thresholds + model selection). It is consumed by the
-# API gateway below AND linked to the Render Workflows service (created in the
-# Dashboard — Blueprints don't yet support Workflows). Both run the same
-# `backend.config.Settings`, so they must see identical config; linking one
-# group beats hand-pasting ~20 vars into the Dashboard.
+# `pydantic-agents-workflows-pipeline` holds the Q&A pipeline config
+# (LLM/Logfire secrets, thresholds, model selection). The API gateway and the
+# Workflows service both use it, because both run `backend.config.Settings`.
 #
-# `pydantic-agents-workflows-pipeline-trigger` holds the creds the gateway + ingest cron need to trigger
-# and poll workflow runs. Set WORKFLOW_SLUG once after the Workflows service
-# exists and both services inherit it.
+# `pydantic-agents-workflows-pipeline-trigger` holds the Render API key that
+# the gateway and the ingest cron use to start and poll workflow runs.
 envVarGroups:
   - name: pydantic-agents-workflows-pipeline
     envVars:
@@ -61,8 +57,6 @@ envVarGroups:
     envVars:
       - key: RENDER_API_KEY
         sync: false
-      - key: WORKFLOW_SLUG
-        sync: false
 
 projects:
   - name: pydantic-agents-workflows
@@ -75,14 +69,30 @@ projects:
             user: pydantic_agents_user
             plan: basic-1gb
             region: oregon
-            postgresMajorVersion: "17"
+            postgresMajorVersion: "18"
 
         # Services in the production environment
         services:
+          # Render Workflows service. Runs the Q&A pipeline and ingestion
+          # tasks. The gateway and the ingest cron start runs on it.
+          - type: workflow
+            name: pydantic-agents-workflows
+            runtime: python
+            region: oregon
+            buildCommand: uv sync --no-dev --frozen
+            startCommand: uv run render-workflows workflows.app:app
+            envVars:
+              - fromGroup: pydantic-agents-workflows-pipeline
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: pydantic-agents-workflows-db
+                  property: connectionString
+              # Match .python-version and uv.lock
+              - key: PYTHON_VERSION
+                value: "3.13"
+
           # Backend API gateway (FastAPI + Logfire).
-          # The Q&A pipeline + ingestion run in a separate Render Workflows
-          # service (created in the Dashboard — Blueprints don't yet support
-          # Workflows). This gateway triggers and polls workflow runs.
+          # Starts and polls runs on the Workflows service above.
           - type: web
             name: pydantic-agents-workflows-api
             runtime: python
@@ -99,8 +109,13 @@ projects:
             envVars:
               # Shared pipeline config + secrets (also linked to the Workflows service)
               - fromGroup: pydantic-agents-workflows-pipeline
-              # Workflow trigger creds (shared with the ingest cron)
+              # Render API key (shared with the ingest cron)
               - fromGroup: pydantic-agents-workflows-pipeline-trigger
+              - key: WORKFLOW_SLUG
+                fromService:
+                  name: pydantic-agents-workflows
+                  type: workflow
+                  property: slug
               # Database connection (auto-injected from database)
               - key: DATABASE_URL
                 fromDatabase:
@@ -118,8 +133,12 @@ projects:
             buildCommand: uv sync --no-dev --frozen
             startCommand: uv run python workflows/trigger_ingest.py
             envVars:
-              # Only needs the trigger creds (RENDER_API_KEY + WORKFLOW_SLUG)
               - fromGroup: pydantic-agents-workflows-pipeline-trigger
+              - key: WORKFLOW_SLUG
+                fromService:
+                  name: pydantic-agents-workflows
+                  type: workflow
+                  property: slug
 
           # Frontend (Next.js Static Site)
           - type: web
