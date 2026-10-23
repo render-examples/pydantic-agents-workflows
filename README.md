@@ -1,6 +1,6 @@
-# Pydantic Agents
+# Pydantic AI Agents
 
-> Render Developer Q&A Assistant showcasing observable AI with Pydantic Agents, Pydantic Embedder, Logfire, and Render Workflows
+> Render Developer Q&A Assistant showcasing observable AI with Pydantic AI Agents, Pydantic Embedder, Logfire, and Render Workflows
 
 <a href="https://render.com/deploy?repo=https://github.com/render-examples/pydantic-agents-workflows">
   <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32">
