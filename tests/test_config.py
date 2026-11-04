@@ -54,6 +54,12 @@ def test_cors_bare_host_gets_https():
     assert s.cors_origins == ["https://my-frontend.onrender.com"]
 
 
+def test_cors_render_service_name_gets_onrender_domain():
+    # Render's `fromService` `host` property gives a static site's name without a domain.
+    s = make(cors_origins="pydantic-agents-workflows-frontend")
+    assert s.cors_origins == ["https://pydantic-agents-workflows-frontend.onrender.com"]
+
+
 def test_cors_comma_list_and_json_list():
     assert make(cors_origins="http://localhost:3000, a.example.com").cors_origins == [
         "http://localhost:3000",

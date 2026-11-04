@@ -141,8 +141,9 @@ projects:
                 fromDatabase:
                   name: pydantic-agents-workflows-db
                   property: connectionString
-              # Allow browser requests only from the frontend. Render gives a
-              # bare host, and backend/config.py adds https://.
+              # Allow browser requests only from the frontend. Render gives the
+              # service name only, and backend/config.py adds https:// and
+              # .onrender.com.
               - key: CORS_ORIGINS
                 fromService:
                   name: pydantic-agents-workflows-frontend
