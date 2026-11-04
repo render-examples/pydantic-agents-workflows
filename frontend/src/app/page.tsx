@@ -54,16 +54,15 @@ export default function Home() {
     setLimitError(null)
 
     try {
-      const result = await askQuestion(
-        question,
-        (update) => {
+      const result = await askQuestion(question, {
+        onProgress: (update) => {
           setProgress((prev) => [...prev, update])
         },
-        controller.signal,
-        (left) => {
+        onStart: (left) => {
           if (left !== undefined) setRemaining(left)
-        }
-      )
+        },
+        signal: controller.signal,
+      })
 
       if (demo) saveDemoAnswer(result)
       setAnswer(result)

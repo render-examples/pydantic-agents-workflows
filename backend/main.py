@@ -19,10 +19,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logfire
+from redis.exceptions import RedisError
 
 # Importing observability configures Logfire + instrumentation at module load.
 import backend.observability  # noqa: F401
@@ -34,12 +35,13 @@ from render.client.types import TaskRunStatusValues
 from backend.config import settings
 from backend.models import QuestionRequest, HealthCheck
 from backend.database import vector_store
-from backend.api.dependencies import ClientId
+from backend.api.dependencies import ClientId, require_history_enabled
 from backend.api.logs import fetch_logfire_logs
 from backend.demo import (
     DEPLOY_URL,
     LIMIT_MESSAGE,
     LimitExceeded,
+    LimiterUnavailable,
     Limits,
     client_ip,
     get_redis,
@@ -90,6 +92,7 @@ app.add_middleware(
     expose_headers=["Retry-After"],
 )
 
+
 def _drop_endpoint_arguments(request, attributes):
     """Do not record endpoint arguments on spans, because they include the client ID."""
     attributes.pop("values", None)
@@ -130,12 +133,6 @@ def _demo_unavailable() -> HTTPException:
     return HTTPException(status_code=503, detail="Demo limits are unavailable. Try again later.")
 
 
-def _history_disabled() -> None:
-    """Demo mode stores no history on the server, so the history routes are off."""
-    if settings.demo:
-        raise HTTPException(status_code=404, detail="History is not available in the demo")
-
-
 @app.post("/ask", status_code=202, tags=["Q&A"])
 async def ask_question(request: QuestionRequest, http_request: Request):
     """
@@ -154,15 +151,14 @@ async def ask_question(request: QuestionRequest, http_request: Request):
     reservation = None
     if settings.demo:
         try:
-            redis = get_redis()
-            reservation = await reserve(redis, client_ip(http_request), Limits.from_settings())
+            reservation = await reserve(get_redis(), client_ip(http_request), Limits.from_settings())
         except LimitExceeded as e:
             return JSONResponse(
                 status_code=429,
                 headers={"Retry-After": str(e.retry_after)},
                 content={"detail": {"message": LIMIT_MESSAGE, "deploy_url": DEPLOY_URL}},
             )
-        except Exception as e:  # noqa: BLE001 - fail closed if Key Value is down
+        except (LimiterUnavailable, RedisError) as e:  # Fail closed if Key Value is down.
             logfire.error("Demo limiter unavailable", error=str(e), exc_info=True)
             raise _demo_unavailable()
 
@@ -191,7 +187,7 @@ async def ask_question(request: QuestionRequest, http_request: Request):
             logfire.error("Failed to trigger workflow run", error=str(e), exc_info=True)
             if reservation:
                 try:
-                    await release(redis, reservation)
+                    await release(get_redis(), reservation)
                 except Exception as release_error:  # noqa: BLE001
                     logfire.error("Failed to release demo question", error=str(release_error))
             raise HTTPException(status_code=502, detail="Failed to start pipeline")
@@ -296,7 +292,7 @@ async def get_stats():
     }
 
 
-@app.get("/history", tags=["Q&A"])
+@app.get("/history", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
 async def get_history(client_id: ClientId, limit: Annotated[int, Query(ge=1, le=100)] = 20):
     """
     Get recent Q&A sessions for the calling browser client.
@@ -306,9 +302,6 @@ async def get_history(client_id: ClientId, limit: Annotated[int, Query(ge=1, le=
         limit: Maximum number of sessions to return (1 to 100, default 20)
     """
 
-    if settings.demo:
-        return {"sessions": [], "count": 0}
-
     sessions = await vector_store.get_recent_sessions(client_id=client_id, limit=limit)
 
     return {
@@ -317,7 +310,7 @@ async def get_history(client_id: ClientId, limit: Annotated[int, Query(ge=1, le=
     }
 
 
-@app.get("/history/{session_id}", tags=["Q&A"])
+@app.get("/history/{session_id}", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
 async def get_session(session_id: UUID, client_id: ClientId):
     """
     Get a specific Q&A session by ID, scoped to the calling client.
@@ -327,7 +320,6 @@ async def get_session(session_id: UUID, client_id: ClientId):
         client_id: Anonymous browser client ID that must own the session
     """
 
-    _history_disabled()
     session = await vector_store.get_session_by_id(str(session_id), client_id)
 
     if not session:
@@ -336,7 +328,7 @@ async def get_session(session_id: UUID, client_id: ClientId):
     return session
 
 
-@app.delete("/history/{session_id}", tags=["Q&A"])
+@app.delete("/history/{session_id}", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
 async def delete_session(session_id: UUID, client_id: ClientId):
     """
     Delete a specific Q&A session by ID, scoped to the calling client.
@@ -346,7 +338,6 @@ async def delete_session(session_id: UUID, client_id: ClientId):
         client_id: Anonymous browser client ID that must own the session
     """
 
-    _history_disabled()
     deleted = await vector_store.delete_session(str(session_id), client_id)
 
     if not deleted:
@@ -359,7 +350,7 @@ async def delete_session(session_id: UUID, client_id: ClientId):
     }
 
 
-@app.delete("/history", tags=["Q&A"])
+@app.delete("/history", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
 async def clear_all_history(client_id: ClientId):
     """
     Delete all Q&A sessions owned by the calling client.
@@ -370,7 +361,6 @@ async def clear_all_history(client_id: ClientId):
         client_id: Anonymous browser client ID whose history is cleared
     """
 
-    _history_disabled()
     deleted_count = await vector_store.delete_all_sessions(client_id)
 
     return {
@@ -380,7 +370,7 @@ async def clear_all_history(client_id: ClientId):
     }
 
 
-@app.get("/sessions/{session_id}/logs", tags=["Observability"])
+@app.get("/sessions/{session_id}/logs", tags=["Observability"], dependencies=[Depends(require_history_enabled)])
 async def get_session_logs(session_id: UUID, client_id: ClientId):
     """
     Fetch Logfire logs for a specific Q&A session, scoped to the calling client.
@@ -392,8 +382,6 @@ async def get_session_logs(session_id: UUID, client_id: ClientId):
         session_id: The UUID of the session
         client_id: Anonymous browser client ID that must own the session
     """
-    # Get session from database to retrieve trace_id (scoped to the owning client)
-    _history_disabled()
     session = await vector_store.get_session_by_id(str(session_id), client_id)
 
     if not session:
@@ -406,15 +394,7 @@ async def get_session_logs(session_id: UUID, client_id: ClientId):
             detail="Trace ID not available for this session (may be from before trace logging was enabled)"
         )
 
-    # Fetch logs from Logfire API
-    try:
-        logs_data = await fetch_logfire_logs(trace_id)
-        return logs_data
-    except HTTPException:
-        raise
-    except Exception as e:
-        logfire.error(f"Unexpected error fetching logs: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch logs")
+    return await fetch_logfire_logs(trace_id)
 
 
 if __name__ == "__main__":

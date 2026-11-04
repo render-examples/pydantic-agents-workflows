@@ -25,19 +25,22 @@ export default function AnswerDisplay({ answer }: AnswerDisplayProps) {
     : '0'
 
   // Saved sessions open logs by session ID. Demo answers open them by run ID.
-  const hasLogs = Boolean(answer.session_id || (answer.run_id && answer.progress_token))
+  const { session_id: sessionId, run_id: runId, progress_token: progressToken } = answer
+  const fetchLogs = sessionId
+    ? () => getSessionLogs(sessionId)
+    : runId && progressToken
+      ? () => getRunLogs(runId, progressToken)
+      : null
+  const hasLogs = fetchLogs !== null
 
   // Open the Logs tab and fetch the logs the first time.
   const openLogsTab = () => {
     setActiveTab('logs')
-    if (logs || logsLoading || !hasLogs) return
+    if (logs || logsLoading || !fetchLogs) return
 
     setLogsLoading(true)
     setLogsError(null)
-    const request = answer.session_id
-      ? getSessionLogs(answer.session_id)
-      : getRunLogs(answer.run_id!, answer.progress_token!)
-    request
+    fetchLogs()
       .then(data => {
         setLogs(data)
       })

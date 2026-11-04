@@ -3,7 +3,9 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, HTTPException
+
+from backend.config import settings
 
 
 def require_client_id(x_client_id: Annotated[UUID, Header()]) -> str:
@@ -18,3 +20,9 @@ def require_client_id(x_client_id: Annotated[UUID, Header()]) -> str:
 # Annotated alias so scoped routes can declare ``client_id: ClientId`` and share
 # one validation path.
 ClientId = Annotated[str, Depends(require_client_id)]
+
+
+def require_history_enabled() -> None:
+    """Turn off the history routes in demo mode, because demo mode stores no history."""
+    if settings.demo:
+        raise HTTPException(status_code=404, detail="History is not available in the demo")

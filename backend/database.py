@@ -593,6 +593,9 @@ class VectorStore:
 
     async def record_run(self, token: str, run_id: str) -> None:
         """Save the run ID that POST /ask started under ``token``."""
+        if not self.pool:
+            raise RuntimeError("Database pool not initialized")
+
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO pipeline_progress (token, run_id, updated_at)
@@ -620,6 +623,9 @@ class VectorStore:
         The row has ``updates`` (the cumulative stage list) and ``trace_id``.
         Returns ``None`` when the token and run ID do not match.
         """
+        if not self.pool:
+            raise RuntimeError("Database pool not initialized")
+
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT updates, trace_id FROM pipeline_progress WHERE token = $1 AND run_id = $2",

@@ -9,7 +9,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@types/react-syntax-highlighter": "^15.5.13",
     "next": "^16.4.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -24,6 +23,7 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.5",
     "postcss": "^8.5.32",

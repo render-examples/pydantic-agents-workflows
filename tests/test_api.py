@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fakeredis import FakeAsyncRedis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from render.client.errors import RenderError
 
 from backend import main
@@ -267,6 +268,16 @@ async def test_demo_without_key_value_returns_503(client, workflows, store, demo
     assert workflows.started == []
 
 
+async def test_demo_key_value_error_returns_503(client, workflows, store, demo, monkeypatch):
+    async def broken(*args, **kwargs):
+        raise RedisConnectionError("connection refused")
+
+    monkeypatch.setattr(main, "reserve", broken)
+    r = await client.post("/ask", json=QUESTION)
+    assert r.status_code == 503
+    assert workflows.started == []
+
+
 async def test_demo_status_without_key_value_stays_on(client, demo, monkeypatch):
     def broken():
         raise LimiterUnavailable()
@@ -294,7 +305,7 @@ async def test_demo_uses_cf_connecting_ip_not_forwarded_for(client, workflows, s
 
 async def test_demo_history_routes_are_off(client, store, demo):
     h = {"X-Client-Id": CLIENT}
-    assert (await client.get("/history", headers=h)).json() == {"sessions": [], "count": 0}
+    assert (await client.get("/history", headers=h)).status_code == 404
     sid = str(uuid4())
     assert (await client.get(f"/history/{sid}", headers=h)).status_code == 404
     assert (await client.delete(f"/history/{sid}", headers=h)).status_code == 404

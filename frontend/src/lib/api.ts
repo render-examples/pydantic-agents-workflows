@@ -68,6 +68,14 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
+export interface AskQuestionOptions {
+  /** Called once for each new pipeline stage update. */
+  onProgress?: (update: ProgressUpdate) => void
+  /** Called when the run starts, with the demo questions left (undefined outside demo mode). */
+  onStart?: (remaining: number | null | undefined) => void
+  signal?: AbortSignal
+}
+
 /**
  * Ask a question via the Workflows-backed pipeline.
  *
@@ -79,9 +87,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export async function askQuestion(
   question: string,
-  onProgress?: (update: ProgressUpdate) => void,
-  signal?: AbortSignal,
-  onStart?: (remaining: number | null | undefined) => void
+  { onProgress, onStart, signal }: AskQuestionOptions = {}
 ): Promise<AnswerResponse> {
   // 1. Trigger the workflow run.
   const startResponse = await fetch(`${API_BASE_URL}/ask`, {
