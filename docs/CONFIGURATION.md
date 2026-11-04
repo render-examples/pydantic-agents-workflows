@@ -39,7 +39,7 @@ These have sensible defaults but can be customized:
 
 ```bash
 # Generation Settings
-MAX_TOKENS=4000                          # Answer generation token limit
+MAX_TOKENS=5000                          # Answer generation token limit
 
 # RAG Settings
 RAG_TOP_K=20                             # Number of documents to retrieve
@@ -51,11 +51,11 @@ EMBEDDING_MODEL=text-embedding-3-small   # OpenAI embedding model
 EMBEDDING_DIMENSIONS=1536                # Embedding vector dimensions
 
 # Model Selection
-ANSWER_MODEL=claude-sonnet-4-6  # Primary answer generation model
+ANSWER_MODEL=claude-sonnet-5-5  # Primary answer generation model
 CLAIMS_MODEL=gpt-5.4-mini                # Claims extraction model
-ACCURACY_MODEL=claude-sonnet-4-6  # Accuracy checking model
+ACCURACY_MODEL=claude-sonnet-5-5  # Accuracy checking model
 EVAL_MODEL_OPENAI=gpt-5.4-mini           # OpenAI evaluator model
-EVAL_MODEL_ANTHROPIC=claude-sonnet-4-6  # Anthropic evaluator model
+EVAL_MODEL_ANTHROPIC=claude-sonnet-5-5  # Anthropic evaluator model
 
 # Performance Settings
 TIMEOUT_SECONDS=30                       # Per-stage timeout
@@ -73,30 +73,22 @@ ENVIRONMENT=production                   # Logfire environment tag; set to `deve
 
 ## Security & Deployment Posture
 
-This is a demo template. It ships intentionally open so a one-click deploy just works,
-which means a few things you should understand (and tighten) before exposing a fork publicly:
+There is no login on any endpoint. Read these points before you share a deployed URL:
 
-- No authentication. There is no login, API key, or session auth on any endpoint. History
-  is scoped only by an anonymous, client-generated `client_id` (a random UUID in the browser's
-  `localStorage`) — this separates users' views but is **not** a security boundary.
-- `POST /ask` is unauthenticated and unthrottled, and it costs money.** Every call triggers
-  the full pipeline — OpenAI **and** Anthropic requests billed to your keys. If you deploy a
-  public fork, anyone who finds the URL can drive up your LLM bill. Before exposing it, add
-  authentication and/or rate limiting (e.g. [slowapi](https://github.com/laurentS/slowapi)
-  per-IP, or a per-`client_id` cap) in `backend/main.py`.
-- CORS defaults to `*`. `CORS_ORIGINS` defaults to a wildcard so the demo works from any
-  origin. This is safe *only* because credentials are disabled (`allow_credentials=False` in
-  `backend/main.py`), which is why browsers permit a wildcard origin at all. In production,
-  set `CORS_ORIGINS` to your frontend origin(s).
-- Read endpoints are ownership-scoped. `GET /history/{id}` and `GET /sessions/{id}/logs`
-  require the caller's `client_id` and only return a session that `client_id` owns — matching
-  the `DELETE` routes. Session IDs are unguessable UUIDs, but the scoping keeps reads and
-  deletes consistent.
-- Secrets live only in environment variables (never committed); `render.yaml` marks all
-  secrets `sync: false` so Render prompts for them on first apply.
+- `POST /ask` costs money. Each call runs the full pipeline on your OpenAI and Anthropic
+  keys, and anyone who finds the API URL can call it. Set `DEMO=true` to turn on usage limits
+  (see the README "Demo mode" section), and set spend limits in the OpenAI and Anthropic consoles.
+- History is scoped by an anonymous `client_id`, a random UUID in the browser's `localStorage`.
+  The browser sends it in the `X-Client-Id` header. The API rejects a value that is not a UUID.
+  Anyone who has a visitor's `client_id` can read that visitor's history.
+- Only the browser that started a run can poll it. `POST /ask` returns a `progress_token`, and
+  `GET /ask/{run_id}` and `GET /ask/{run_id}/logs` return 404 without the matching token.
+- `CORS_ORIGINS` defaults to `http://localhost:3000`. `render.yaml` sets it to the frontend's
+  host. The value is a comma-separated list, and a bare host gets an `https://` prefix.
+- Secrets live only in environment variables. `render.yaml` marks all secrets `sync: false`,
+  so Render prompts for them on first apply.
 
-For a production deployment: add auth + rate limiting to `POST /ask`, set `CORS_ORIGINS` to
-your real origin, and set `ENVIRONMENT` appropriately so Logfire traces are grouped correctly.
+Set `ENVIRONMENT` so Logfire groups traces correctly.
 
 ---
 
@@ -120,10 +112,10 @@ class PipelineConfig:
     EMBEDDING_DIMENSIONS = 1536
     
     # Model selection
-    ANSWER_MODEL = "claude-sonnet-4-6"
+    ANSWER_MODEL = "claude-sonnet-5-5"
     CLAIMS_MODEL = "gpt-5.4-mini"
-    ACCURACY_MODEL = "claude-sonnet-4-6"
-    EVAL_MODELS = ["gpt-5.4-mini", "claude-sonnet-4-6"]
+    ACCURACY_MODEL = "claude-sonnet-5-5"
+    EVAL_MODELS = ["gpt-5.4-mini", "claude-sonnet-5-5"]
 ```
 
 ---
@@ -149,38 +141,38 @@ class PipelineConfig:
 #### Anthropic Models
 
 ```python
-"claude-opus-4-8"             # Most capable, most expensive
-"claude-sonnet-4-6"           # Latest Sonnet, best balance (default)
-"claude-haiku-4-5"            # Fast and cheap
+"claude-opus-5-5"             # Most capable, most expensive
+"claude-sonnet-5-5"           # Latest Sonnet, best balance (default)
+"claude-haiku-5-5"            # Fast and cheap
 ```
 
 ### Model Selection Strategy
 
 **Cost-Optimized:**
 ```python
-ANSWER_MODEL = "claude-haiku-4-5"          # Cheapest Claude
+ANSWER_MODEL = "claude-haiku-5-5"          # Cheapest Claude
 CLAIMS_MODEL = "gpt-3.5-turbo"           # Cheapest OpenAI
 ACCURACY_MODEL = "gpt-5.4-mini"          # Balance
 EVAL_MODEL_OPENAI = "gpt-3.5-turbo"
-EVAL_MODEL_ANTHROPIC = "claude-haiku-4-5"
+EVAL_MODEL_ANTHROPIC = "claude-haiku-5-5"
 ```
 
 **Quality-Optimized:**
 ```python
 ANSWER_MODEL = "claude-opus-4-8"           # Best Anthropic
 CLAIMS_MODEL = "gpt-5.4-mini"            # Best OpenAI for structured output
-ACCURACY_MODEL = "claude-sonnet-4-6"
+ACCURACY_MODEL = "claude-sonnet-5-5"
 EVAL_MODEL_OPENAI = "gpt-5.4-mini"
 EVAL_MODEL_ANTHROPIC = "claude-opus-4-8"
 ```
 
 **Balanced (Default):**
 ```python
-ANSWER_MODEL = "claude-sonnet-4-6"  # Good balance
+ANSWER_MODEL = "claude-sonnet-5-5"  # Good balance
 CLAIMS_MODEL = "gpt-5.4-mini"                # Fast and cheap
-ACCURACY_MODEL = "claude-sonnet-4-6"  # Reliable
+ACCURACY_MODEL = "claude-sonnet-5-5"  # Reliable
 EVAL_MODEL_OPENAI = "gpt-5.4-mini"
-EVAL_MODEL_ANTHROPIC = "claude-sonnet-4-6"
+EVAL_MODEL_ANTHROPIC = "claude-sonnet-5-5"
 ```
 
 ---
@@ -251,7 +243,7 @@ MAX_TOKENS = 1500  # Down from 2000
 RAG_TOP_K = 5  # Down from 10
 
 # Use faster models
-ANSWER_MODEL = "claude-haiku-4-5"  # Faster than Sonnet
+ANSWER_MODEL = "claude-haiku-5-5"  # Faster than Sonnet
 
 # Disable less critical stages (not recommended)
 ENABLE_CLAIMS_VERIFICATION = False
@@ -262,7 +254,7 @@ ENABLE_ACCURACY_CHECK = False
 
 ```python
 # Use cheaper models
-ANSWER_MODEL = "claude-haiku-4-5"
+ANSWER_MODEL = "claude-haiku-5-5"
 CLAIMS_MODEL = "gpt-3.5-turbo"
 ACCURACY_MODEL = "gpt-5.4-mini"
 
@@ -280,7 +272,7 @@ CACHE_TTL_SECONDS = 3600  # 1 hour
 # Use best models
 ANSWER_MODEL = "claude-opus-4-8"
 CLAIMS_MODEL = "gpt-5.4-mini"
-ACCURACY_MODEL = "claude-sonnet-4-6"
+ACCURACY_MODEL = "claude-sonnet-5-5"
 
 # Increase token limits
 MAX_TOKENS = 3000
@@ -314,7 +306,7 @@ SIMILARITY_THRESHOLD = 0.70
 **Costs too high:**
 ```python
 # Use cheaper models
-ANSWER_MODEL = "claude-haiku-4-5"
+ANSWER_MODEL = "claude-haiku-5-5"
 CLAIMS_MODEL = "gpt-3.5-turbo"
 
 # Reduce token limit
@@ -324,7 +316,7 @@ MAX_TOKENS = 1000
 **Low quality scores:**
 ```python
 # Use better models
-ANSWER_MODEL = "claude-sonnet-4-6"
+ANSWER_MODEL = "claude-sonnet-5-5"
 
 # More context
 RAG_TOP_K = 15

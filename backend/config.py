@@ -1,7 +1,10 @@
 """Configuration settings for the Ask Render Anything Assistant."""
 
-from pydantic import model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import json
+from typing import Annotated, Any
+
+from pydantic import ValidationInfo, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 # Max embedding dimensions supported per OpenAI model. Used to reject an
@@ -13,6 +16,13 @@ KNOWN_EMBEDDING_DIMS = {
     "text-embedding-3-large": 3072,
     "text-embedding-ada-002": 1536,
 }
+
+
+# Demo profile (DEMO=true): lower answer token limit.
+DEMO_MAX_TOKENS = 2000
+
+# DEMO values that turn on demo mode, in any letter case. Same set as Pydantic's bool parser.
+TRUE_VALUES = frozenset({"1", "true", "t", "yes", "y", "on"})
 
 
 class Settings(BaseSettings):
@@ -44,7 +54,7 @@ class Settings(BaseSettings):
     workflow_slug: str = ""  # e.g. "pydantic-agents-workflows" (from the Workflow's Dashboard page)
     
     # Pipeline Configuration
-    max_tokens: int = 4000  # Answer generation budget; raised from 2000 so broad answers aren't truncated
+    max_tokens: int = 5000  # Answer generation budget. Claude 5 models count about 30% more tokens than Claude 4.
     timeout_seconds: int = 30
     
     # RAG Configuration
@@ -63,12 +73,12 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 1536
     
     # Model Selection
-    answer_model: str = "claude-sonnet-4-6"
+    answer_model: str = "claude-sonnet-5-5"
     claims_model: str = "gpt-5.4-mini"
-    accuracy_model: str = "claude-sonnet-4-6"
+    accuracy_model: str = "claude-sonnet-5-5"
     eval_model_openai: str = "gpt-5.4-mini"
-    eval_model_anthropic: str = "claude-sonnet-4-6"
-    query_expansion_model: str = "gpt-4.1-nano"
+    eval_model_anthropic: str = "claude-sonnet-5-5"
+    query_expansion_model: str = "gpt-5.4-nano"
     
     # Performance
     enable_caching: bool = True
@@ -78,12 +88,57 @@ class Settings(BaseSettings):
     # aren't mixed into the production view.
     environment: str = "production"
     
-    # CORS
-    # Wildcard is the default so the deployed demo works from any origin. It is
-    # safe ONLY because credentials are disabled (see main.py: allow_credentials=False),
-    # which is why browsers permit a "*" origin at all. In production set
-    # CORS_ORIGINS to your frontend origin(s) if you tighten this.
-    cors_origins: list[str] = ["*"]
+    # CORS. Origins the browser may call the API from. Accepts a JSON list or a
+    # comma-separated string. A bare host (as Render's `fromService` gives) gets
+    # an `https://` prefix.
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+
+    # Public demo mode. Off by default; see the README "Demo mode" section.
+    demo: bool = False
+    demo_rate_limit_per_minute: int = 3
+    demo_max_questions_per_visitor: int = 10
+    demo_daily_question_limit: int = 200
+    # Key Value connection string for the demo limit counters.
+    redis_url: str = ""
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            v = v.strip()
+            v = json.loads(v) if v.startswith("[") else v.split(",")
+        if isinstance(v, list):
+            origins = [str(o).strip().rstrip("/") for o in v if str(o).strip()]
+            return [o if "://" in o else f"https://{o}" for o in origins]
+        return v
+
+    @field_validator("demo", mode="before")
+    @classmethod
+    def _parse_demo(cls, v: Any) -> bool:
+        """Turn on demo mode for a value in TRUE_VALUES. Any other value turns it off."""
+        return str(v).strip().lower() in TRUE_VALUES
+
+    @field_validator(
+        "demo_rate_limit_per_minute",
+        "demo_max_questions_per_visitor",
+        "demo_daily_question_limit",
+        mode="before",
+    )
+    @classmethod
+    def _parse_limit(cls, v: Any, info: ValidationInfo) -> int:
+        """Use the default for a missing or invalid limit. `0` turns the limit off."""
+        try:
+            value = int(str(v).strip())
+        except ValueError:
+            value = -1
+        return value if value >= 0 else cls.model_fields[info.field_name].default
+
+    @model_validator(mode="after")
+    def _apply_demo_profile(self) -> "Settings":
+        """In demo mode, use a lower answer token limit."""
+        if self.demo:
+            self.max_tokens = min(self.max_tokens, DEMO_MAX_TOKENS)
+        return self
 
     @model_validator(mode="after")
     def _validate_embedding_dimensions(self) -> "Settings":

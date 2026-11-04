@@ -88,10 +88,7 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
                 raise HTTPException(status_code=403, detail="Insufficient permissions for Logfire API")
             elif response.status_code != 200:
                 logfire.error(f"Logfire API error: {response.status_code} - {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Logfire API error: {response.text}"
-                )
+                raise HTTPException(status_code=502, detail="Failed to fetch logs")
 
             data = response.json()
 
@@ -129,5 +126,5 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
         logfire.error(f"Timeout fetching logs for trace {trace_id}")
         raise HTTPException(status_code=504, detail="Logfire API timeout")
     except httpx.RequestError as e:
-        logfire.error(f"Error fetching logs for trace {trace_id}: {e}")
-        raise HTTPException(status_code=502, detail=f"Failed to connect to Logfire API: {str(e)}")
+        logfire.error(f"Error fetching logs for trace {trace_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Failed to connect to Logfire API")

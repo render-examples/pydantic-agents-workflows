@@ -179,6 +179,17 @@ class VectorStore:
                     )
                 """)
 
+                # Migration: `run_id` ties a progress token to the run that
+                # POST /ask started, so only the caller who holds the token can
+                # poll that run. `trace_id` lets the caller open the run's logs
+                # without a saved session (demo mode saves no sessions).
+                await conn.execute(
+                    "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS run_id TEXT"
+                )
+                await conn.execute(
+                    "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS trace_id TEXT"
+                )
+
         logfire.info("Database initialized successfully")
     
     async def close(self):
@@ -580,19 +591,46 @@ class VectorStore:
                 "DELETE FROM pipeline_progress WHERE updated_at < NOW() - INTERVAL '1 day'"
             )
 
-    async def get_progress(self, token: str) -> list[dict]:
-        """Return the cumulative progress updates recorded for ``token`` (or [])."""
+    async def record_run(self, token: str, run_id: str) -> None:
+        """Save the run ID that POST /ask started under ``token``."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO pipeline_progress (token, run_id, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (token) DO UPDATE
+                SET run_id = EXCLUDED.run_id, updated_at = NOW()
+            """, token, run_id)
+
+    async def record_trace(self, token: str, trace_id: str) -> None:
+        """Save the Logfire trace ID of the run that writes under ``token``."""
         if not self.pool:
-            return []
+            return
 
         async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO pipeline_progress (token, trace_id, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (token) DO UPDATE
+                SET trace_id = EXCLUDED.trace_id, updated_at = NOW()
+            """, token, trace_id)
+
+    async def get_run(self, token: str, run_id: str) -> Optional[dict]:
+        """Return the progress row only if ``token`` belongs to ``run_id``.
+
+        The row has ``updates`` (the cumulative stage list) and ``trace_id``.
+        Returns ``None`` when the token and run ID do not match.
+        """
+        async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT updates FROM pipeline_progress WHERE token = $1", token
+                "SELECT updates, trace_id FROM pipeline_progress WHERE token = $1 AND run_id = $2",
+                token, run_id,
             )
-        if not row or row["updates"] is None:
-            return []
-        updates = row["updates"]
-        return json.loads(updates) if isinstance(updates, str) else updates
+        if not row:
+            return None
+        updates = row["updates"] or []
+        if isinstance(updates, str):
+            updates = json.loads(updates)
+        return {"updates": updates, "trace_id": row["trace_id"]}
 
     async def get_recent_sessions(self, client_id: str, limit: int = 20) -> list[dict]:
         """Get recent Q&A sessions for a given browser client.

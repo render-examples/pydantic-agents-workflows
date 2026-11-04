@@ -5,6 +5,7 @@ from typing import Optional
 from datetime import datetime, timezone
 import re
 import html
+from uuid import UUID
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +61,14 @@ class QuestionRequest(BaseModel):
     """Request model for asking a question."""
 
     question: str = Field(..., min_length=10, max_length=500, description="The question to answer")
-    session_id: Optional[str] = Field(None, description="Optional session ID for conversation tracking")
-    client_id: Optional[str] = Field(None, description="Anonymous browser client ID used to scope history to this user")
+    session_id: Optional[str] = Field(None, description="Optional session ID (UUID) for conversation tracking")
+    client_id: Optional[str] = Field(None, description="Anonymous browser client ID (UUID) used to scope history to this user")
+
+    @field_validator('session_id', 'client_id')
+    @classmethod
+    def require_uuid(cls, v: Optional[str]) -> Optional[str]:
+        """Accept only UUIDs, and store them in canonical form."""
+        return None if v is None else str(UUID(v))
 
     @field_validator('question', mode='before')
     @classmethod

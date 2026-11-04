@@ -1,22 +1,18 @@
 """Shared FastAPI dependencies for the gateway routes."""
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Header
 
 
-def require_client_id(client_id: str) -> str:
-    """Require a non-empty ``client_id`` query parameter.
+def require_client_id(x_client_id: Annotated[UUID, Header()]) -> str:
+    """Read the anonymous browser client ID from the ``X-Client-Id`` header.
 
-    Every session-scoped route takes an anonymous browser ``client_id`` and must
-    reject requests that omit it, so ownership checks can't be silently bypassed.
-    Declaring ``client_id: str`` keeps it a required query parameter (a missing
-    value yields FastAPI's 422); this guard additionally rejects a present-but-empty
-    value (``?client_id=`` yields a 400).
+    The ID must be a UUID. A missing or invalid header gives a 422. The ID is
+    sent in a header so that it does not appear in URLs and access logs.
     """
-    if not client_id:
-        raise HTTPException(status_code=400, detail="client_id is required")
-    return client_id
+    return str(x_client_id)
 
 
 # Annotated alias so scoped routes can declare ``client_id: ClientId`` and share

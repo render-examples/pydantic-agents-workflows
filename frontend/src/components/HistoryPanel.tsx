@@ -20,10 +20,6 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
 
-  useEffect(() => {
-    loadHistory()
-  }, [])
-
   const loadHistory = async () => {
     try {
       setLoading(true)
@@ -36,6 +32,43 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
       setLoading(false)
     }
   }
+
+  // Load history on mount. Set state only in the promise callbacks.
+  useEffect(() => {
+    let ignore = false
+    getHistory(20)
+      .then(history => {
+        if (!ignore) setSessions(history)
+      })
+      .catch(err => {
+        if (!ignore) setError(err instanceof Error ? err.message : 'Failed to load history')
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  // Reload when the panel opens, so answers from this session show up.
+  useEffect(() => {
+    if (!isOpen) return
+    let ignore = false
+    getHistory(20)
+      .then(history => {
+        if (!ignore) {
+          setSessions(history)
+          setError(null)
+        }
+      })
+      .catch(err => {
+        if (!ignore) setError(err instanceof Error ? err.message : 'Failed to load history')
+      })
+    return () => {
+      ignore = true
+    }
+  }, [isOpen])
 
   const handleSessionClick = (session: HistorySession) => {
     // Convert HistorySession to AnswerResponse format
@@ -50,7 +83,10 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
       total_duration_ms: session.total_duration_ms,
       stages: session.stages || [],
       timestamp: session.created_at,
-      session_id: session.id
+      // Demo history entries have no saved session, only the run that made them.
+      session_id: session.run_id ? undefined : session.id,
+      run_id: session.run_id,
+      progress_token: session.progress_token,
     }
     
     onLoadSession(answerResponse)

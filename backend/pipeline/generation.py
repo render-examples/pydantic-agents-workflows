@@ -73,7 +73,7 @@ Answer:"""
 
     result = await _answer_agent.run(
         user_prompt,
-        model_settings={"temperature": 0.3, "max_tokens": settings.max_tokens},
+        model_settings={"max_tokens": settings.max_tokens},
     )
 
     usage = usage_and_cost(result, calculate_anthropic_cost, settings.answer_model)

@@ -20,11 +20,16 @@ from backend.config import settings
 
 
 def anthropic_agent(model: str, instructions: str, output_type: Any = str) -> Agent:
-    """Build a Claude-backed ``Agent`` using the configured Anthropic API key."""
+    """Build a Claude-backed ``Agent`` using the configured Anthropic API key.
+
+    Thinking is off, because Claude 5 models think by default and the stages set
+    small token limits. Claude 5 models do not accept ``temperature``.
+    """
     return Agent(
         AnthropicModel(model, provider=AnthropicProvider(api_key=settings.anthropic_api_key)),
         output_type=output_type,
         instructions=instructions,
+        model_settings={"thinking": False},
     )
 
 

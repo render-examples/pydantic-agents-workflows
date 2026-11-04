@@ -7,6 +7,7 @@ interface QuestionInputProps {
   loading: boolean
   onHistoryToggle?: () => void
   onStop?: () => void
+  demo?: boolean
 }
 
 function sanitizeInput(raw: string): string {
@@ -25,7 +26,7 @@ function sanitizeInput(raw: string): string {
   return s
 }
 
-export default function QuestionInput({ onSubmit, loading, onHistoryToggle, onStop }: QuestionInputProps) {
+export default function QuestionInput({ onSubmit, loading, onHistoryToggle, onStop, demo }: QuestionInputProps) {
   const [question, setQuestion] = useState('')
 
   const handleSubmit = (e: FormEvent) => {
@@ -55,6 +56,16 @@ export default function QuestionInput({ onSubmit, loading, onHistoryToggle, onSt
 
   return (
     <div className="bg-black border border-zinc-800 p-6">
+      {demo && (
+        <div className="flex justify-start mb-3">
+          <span
+            className="px-2 py-0.5 text-xs font-semibold tracking-wider text-purple-200 bg-purple-500/20 border border-purple-500/60"
+            title="Public demo. Questions are limited, history resets when you close the tab, and you should not submit sensitive data."
+          >
+            DEMO
+          </span>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <div className="flex items-center justify-between mb-2">

@@ -87,7 +87,7 @@ Evaluate the technical accuracy of this answer."""
 
     result = await _accuracy_agent.run(
         user_prompt,
-        model_settings={"temperature": 0.0, "max_tokens": 1500},
+        model_settings={"max_tokens": 2000},
     )
 
     usage = usage_and_cost(result, calculate_anthropic_cost, settings.accuracy_model)

@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: render_qa_user
       POSTGRES_PASSWORD: local_dev_password
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -16,6 +16,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Local stand-in for Render Key Value. Only needed to try DEMO=true.
+  keyvalue:
+    image: valkey/valkey:8
+    container_name: logfire-render-keyvalue
+    ports:
+      - "127.0.0.1:6379:6379"
 
 volumes:
   postgres_data:

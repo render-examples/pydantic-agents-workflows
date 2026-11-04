@@ -18,6 +18,8 @@ https://github.com/user-attachments/assets/68c6ace5-b070-4c7c-9ab6-5d4342134956
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Deploy to Render](#deploy-to-render)
+- [Demo mode](#demo-mode)
+- [Security](#security)
 - [Example Metrics](#example-metrics)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -116,7 +118,7 @@ stage updates there, and `GET /ask/{run_id}` reads them back), plus `/history`, 
 | # | Stage | Model | Execution |
 |---|-------|-------|-----------|
 | 1 | Question embedding | OpenAI embeddings | in-process |
-| 2 | Hybrid retrieval (pgvector + BM25, LLM multi-query expansion) | `gpt-4.1-nano` | in-process |
+| 2 | Hybrid retrieval (pgvector + BM25, LLM multi-query expansion) | `gpt-5.4-nano` | in-process |
 | 3 | Answer generation | Claude | subtask (3 retries) |
 | 4 | Claims extraction | GPT | subtask |
 | 5 | Claims verification (RAG) | OpenAI embeddings | subtask |
@@ -279,6 +281,7 @@ Render reads [`render.yaml`](./render.yaml) and provisions:
 - API gateway web service (`pydantic-agents-workflows-api`, FastAPI + Logfire)
 - Ingestion refresh cron (`pydantic-agents-workflows-ingest`, triggers the workflow daily)
 - Frontend static site (`pydantic-agents-workflows-frontend`, Next.js)
+- Key Value instance (`pydantic-agents-workflows-kv`, free plan) for the demo usage limits. The API connects to it only when `DEMO=true`.
 - Two **environment groups** that hold all shared config (see below)
 
 On **Apply**, Render prompts once for the secret values in the env groups. You fill these at
@@ -345,10 +348,50 @@ Once the corpus is seeded, you can run the Q&A pipeline directly in the [Render 
 "How do I deploy an AI agent on Render?"
 ```
 
-> **Security note — this is an open demo.** There's no authentication or rate limiting, and
-> `POST /ask` triggers paid OpenAI + Anthropic calls on your keys. Before exposing a public
-> fork, add auth and/or rate limiting to `POST /ask` and set `CORS_ORIGINS` to your frontend
-> origin. See [Security & Deployment Posture](./docs/CONFIGURATION.md#security--deployment-posture).
+> **Note:** The API has no login, so anyone who finds its URL can spend your OpenAI and
+> Anthropic credits. Read [Security](#security) before you share the URL.
+
+## Demo mode
+
+Set `DEMO=true` to run a public demo with no login. The demo runs on your OpenAI and Anthropic keys, so it limits how many questions visitors can ask.
+
+`DEMO` is `false` in `render.yaml`. A fork deploys the full app with no limits until you set `DEMO=true` in the `pydantic-agents-workflows-pipeline` env group. Both the API and the Workflows service read the flag from that group.
+
+When `DEMO=true`, the app makes these changes:
+
+| Capability | Demo | Change |
+|---|---|---|
+| Ask a question | On, with limits | The limits below apply. Answers are limited to 2,000 tokens. |
+| Save history to Postgres | Off | The workflow does not save sessions. |
+| History panel | On, in the browser only | Answers are kept in `sessionStorage` and are gone when the tab closes. |
+| `/history` routes | Off | `GET /history` returns an empty list. The other history routes return 404. |
+| Logfire logs | On, for your own runs | The Logs tab uses `GET /ask/{run_id}/logs`. Logs are available for one day. |
+| `/stats` | On | No change. It returns no visitor data. |
+
+The limits count questions by visitor IP address, and the counters are stored in Key Value:
+
+| Env var | Default | Limit |
+|---|---|---|
+| `DEMO_RATE_LIMIT_PER_MINUTE` | `3` | Questions per minute from one IP address. |
+| `DEMO_MAX_QUESTIONS_PER_VISITOR` | `10` | Questions per IP address in 24 hours. |
+| `DEMO_DAILY_QUESTION_LIMIT` | `200` | Questions from all visitors in 24 hours. |
+
+A value of `0` turns off that limit. A missing or invalid value uses the default. Only a question that starts a pipeline run counts. Polling for the answer, loading history, and opening logs do not count. When a limit is reached, the API returns 429 and the UI shows a Deploy to Render button. If the API cannot reach Key Value in demo mode, it returns 503 and does not start a run.
+
+On Render, `render.yaml` sets `REDIS_URL` on the API from the Key Value instance. To run demo mode locally, start Key Value with `docker compose up keyvalue` and set `REDIS_URL=redis://localhost:6379` in `.env`.
+
+Visitors cannot see each other's history, and the demo stores no history on the server. The free Key Value plan does not persist data, so the counters reset if the instance restarts.
+
+To stop a demo quickly, suspend the API service in the Dashboard or set `DEMO_DAILY_QUESTION_LIMIT` to `1`.
+
+## Security
+
+- The API's `onrender.com` URL is public and has no login, so anyone who finds it spends your OpenAI and Anthropic credits. Set `DEMO=true` to cap usage, and set monthly spend limits in the OpenAI and Anthropic consoles.
+- `RENDER_API_KEY` grants access to every service in its workspace. Use a separate workspace for a public deploy.
+- The API accepts browser requests only from the frontend. `render.yaml` sets `CORS_ORIGINS` to the frontend's host. For local development the default is `http://localhost:3000`.
+- The database and Key Value instance accept no connections from the public internet. To run the ingest scripts from your computer, add your IP address to the database's **Access Control** list in the Dashboard.
+- Preview environments are off, so pull requests do not deploy copies that use your keys.
+- Only the browser that started a run can poll it or open its logs. `POST /ask` returns a `progress_token`, and `GET /ask/{run_id}` returns 404 without the matching token.
 
 ## Documentation
 

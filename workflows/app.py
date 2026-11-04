@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import logfire
 from opentelemetry import context as otel_context
+from opentelemetry import trace
 from opentelemetry.propagate import extract, inject
 from render import Retry, TaskContext, Workflows
 
@@ -305,6 +306,16 @@ async def run_qa_pipeline(
         trace_carrier: dict[str, str] = {}
         inject(trace_carrier)
 
+        # Save the trace ID with the progress token, so the caller can open
+        # this run's logs through GET /ask/{run_id}/logs (demo mode saves no
+        # session to read the trace ID from).
+        trace_id = _current_trace_id()
+        if progress_token and trace_id:
+            try:
+                await vector_store.record_trace(progress_token, trace_id)
+            except Exception as e:  # noqa: BLE001 - logs are best-effort
+                logfire.warning(f"Failed to record trace ID: {e}")
+
         stages: list[PipelineStageResult] = []
         total_cost = 0.0
         pipeline_start = time.time()
@@ -530,7 +541,9 @@ async def run_qa_pipeline(
 
         # Persist the session here (the orchestrator already holds all the data
         # and has DB access), so the gateway need not re-receive everything.
-        response.session_id = await _persist_session(response, client_id)
+        # Demo mode stores no visitor data on the server.
+        if not settings.demo:
+            response.session_id = await _persist_session(response, client_id)
 
         track_pipeline_metrics(
             question=question,
@@ -544,15 +557,16 @@ async def run_qa_pipeline(
         return response.model_dump(mode="json")
 
 
+def _current_trace_id() -> str | None:
+    """Return the current OpenTelemetry trace ID as 32 hex characters."""
+    span_context = trace.get_current_span().get_span_context()
+    return format(span_context.trace_id, "032x") if span_context.is_valid else None
+
+
 async def _persist_session(response: AnswerResponse, client_id: str | None = None) -> str | None:
     """Save the completed Q&A session to the database."""
-    from opentelemetry import trace
-
     try:
-        current_span = trace.get_current_span()
-        trace_id = None
-        if current_span and current_span.get_span_context().is_valid:
-            trace_id = format(current_span.get_span_context().trace_id, "032x")
+        trace_id = _current_trace_id()
         saved_id = await vector_store.save_session(
             question=response.question,
             answer=response.answer,

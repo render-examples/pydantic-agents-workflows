@@ -46,6 +46,8 @@ export interface AnswerResponse {
   stages: PipelineStageResult[]
   timestamp: string
   session_id?: string
+  run_id?: string  // Set by the frontend; used to open the run's logs
+  progress_token?: string  // Set by the frontend; proves this browser started the run
 }
 
 export interface ProgressUpdate {
