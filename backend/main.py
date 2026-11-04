@@ -267,14 +267,18 @@ async def get_run_logs(run_id: str, progress_token: ProgressToken):
 
 @app.get("/demo/status", tags=["Demo"])
 async def demo_status(request: Request):
-    """Report whether demo mode is on and how many questions the caller has left."""
+    """Report whether demo mode is on and how many questions the caller has left.
+
+    If Key Value is unavailable, ``remaining`` is null. Demo mode stays on, so
+    the frontend still shows the demo badge and keeps history in the browser.
+    """
     if not settings.demo:
         return {"demo": False}
     try:
         remaining = await get_remaining(get_redis(), client_ip(request), Limits.from_settings())
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 - POST /ask still fails closed
         logfire.error("Demo limiter unavailable", error=str(e), exc_info=True)
-        raise _demo_unavailable()
+        remaining = None
     return {"demo": True, "remaining": remaining}
 
 

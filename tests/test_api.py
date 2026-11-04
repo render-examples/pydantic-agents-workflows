@@ -267,6 +267,16 @@ async def test_demo_without_key_value_returns_503(client, workflows, store, demo
     assert workflows.started == []
 
 
+async def test_demo_status_without_key_value_stays_on(client, demo, monkeypatch):
+    def broken():
+        raise LimiterUnavailable()
+
+    monkeypatch.setattr(main, "get_redis", broken)
+    r = await client.get("/demo/status")
+    assert r.status_code == 200
+    assert r.json() == {"demo": True, "remaining": None}
+
+
 async def test_demo_uses_cf_connecting_ip_not_forwarded_for(client, workflows, store, demo):
     for i in range(2):
         await client.post(
