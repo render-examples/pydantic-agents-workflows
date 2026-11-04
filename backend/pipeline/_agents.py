@@ -4,6 +4,9 @@ Every stage builds its ``Agent`` the same way — wrap a provider-specific model
 with the API key from ``settings``, an optional typed ``output_type``, and the
 stage instructions. These two helpers remove that repeated boilerplate while
 keeping each stage's "this stage is an Agent with a typed output" shape obvious.
+
+This module also holds the Render Workflows ``app`` and the helper that builds
+the ``RenderWorkflows`` capability for an agent.
 """
 
 from __future__ import annotations
@@ -31,7 +34,10 @@ app = Workflows(
 )
 
 
-def model_request_workflows(timeout_seconds: int, retry: Retry) -> RenderWorkflows:
+_MODEL_REQUEST_RETRY = Retry(max_retries=2, wait_duration_ms=1000)
+
+
+def model_request_workflows(timeout_seconds: int, retry: Retry = _MODEL_REQUEST_RETRY) -> RenderWorkflows:
     """Build a capability that sends each model request of one agent to a chained task run.
 
     Attach one instance to each agent. The entry task must use the ``task``

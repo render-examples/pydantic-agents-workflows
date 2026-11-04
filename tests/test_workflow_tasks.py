@@ -6,8 +6,9 @@ import json
 import pytest
 from pydantic_ai.models.test import TestModel
 
-from backend.models import Document
+from backend.models import Claim, Document, EvaluationOutput
 from backend.pipeline import accuracy, claims, evaluation, generation, query_expansion
+from workflows import app as wf
 from workflows.app import app
 
 _AGENT_NAMES = ["answer", "claims", "accuracy", "eval_openai", "eval_anthropic"]
@@ -99,9 +100,6 @@ async def test_query_expansion_runs_inline_in_task(monkeypatch):
 
 
 async def test_run_qa_pipeline_activates_task_context_and_builds_response(monkeypatch):
-    from backend.models import Claim, EvaluationOutput
-    from workflows import app as wf
-
     in_task = {}
 
     async def generate_answer(question, documents):
@@ -131,9 +129,7 @@ async def test_run_qa_pipeline_activates_task_context_and_builds_response(monkey
     }
 
     for name, stub in stubs.items():
-        if not asyncio.iscoroutinefunction(stub):
-            stub = (lambda f: lambda *a, **k: _done(f(*a, **k)))(stub)
-        monkeypatch.setattr(wf, name, stub)
+        monkeypatch.setattr(wf, name, stub if asyncio.iscoroutinefunction(stub) else _as_async(stub))
     monkeypatch.setattr(wf.vector_store, "initialize", lambda: _done(None))
     monkeypatch.setattr(wf, "_persist_session", lambda response, client_id=None: _done("session-1"))
 
@@ -152,3 +148,8 @@ async def test_run_qa_pipeline_activates_task_context_and_builds_response(monkey
 
 async def _done(value):
     return value
+
+
+def _as_async(fn):
+    """Wrap a sync stub so that the orchestrator can await it."""
+    return lambda *args, **kwargs: _done(fn(*args, **kwargs))

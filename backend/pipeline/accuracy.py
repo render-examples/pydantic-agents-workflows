@@ -7,8 +7,6 @@ completeness are out of scope here — those are judged by the Quality stage."""
 
 from typing import List
 
-from render import Retry
-
 from backend.config import settings, PipelineConfig
 from backend.models import Claim, AccuracyOutput
 from backend.observability import instrument_stage, calculate_anthropic_cost, usage_and_cost
@@ -49,9 +47,7 @@ _accuracy_agent = anthropic_agent(
     settings.accuracy_model,
     ACCURACY_CHECK_INSTRUCTIONS,
     output_type=AccuracyOutput,
-    capabilities=[
-        model_request_workflows(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
-    ],
+    capabilities=[model_request_workflows(timeout_seconds=90)],
 )
 
 

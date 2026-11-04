@@ -5,8 +5,6 @@ actionability for the developer who asked. Two independent judges (OpenAI + Anth
 score in parallel and their agreement is a confidence signal. Factual grounding is
 checked separately by the Accuracy stage, so this stage does not re-verify each fact."""
 
-from render import Retry
-
 from backend.config import settings
 from backend.models import EvaluationResult, EvaluationOutput
 from backend.observability import (
@@ -39,14 +37,12 @@ Scoring criteria:
 - overall (0-100): Weighted average of the above scores.
 - feedback: 1-2 sentences of constructive feedback."""
 
-_EVAL_RETRY = Retry(max_retries=2, wait_duration_ms=1000)
-
 _openai_eval_agent = openai_agent(
     "eval_openai",
     settings.eval_model_openai,
     EVALUATION_INSTRUCTIONS,
     output_type=EvaluationOutput,
-    capabilities=[model_request_workflows(timeout_seconds=60, retry=_EVAL_RETRY)],
+    capabilities=[model_request_workflows(timeout_seconds=60)],
 )
 
 _anthropic_eval_agent = anthropic_agent(
@@ -54,7 +50,7 @@ _anthropic_eval_agent = anthropic_agent(
     settings.eval_model_anthropic,
     EVALUATION_INSTRUCTIONS,
     output_type=EvaluationOutput,
-    capabilities=[model_request_workflows(timeout_seconds=60, retry=_EVAL_RETRY)],
+    capabilities=[model_request_workflows(timeout_seconds=60)],
 )
 
 
