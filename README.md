@@ -355,6 +355,8 @@ Once the corpus is seeded, you can run the Q&A pipeline directly in the [Render 
 
 Set `DEMO=true` to run a public demo with no login. The demo runs on your OpenAI and Anthropic keys, so it limits how many questions visitors can ask.
 
+`DEMO` also accepts `1`, `yes`, `y`, `t`, and `on`, in any letter case. Any other value turns demo mode off.
+
 `DEMO` is `false` in `render.yaml`. A fork deploys the full app with no limits until you set `DEMO=true` in the `pydantic-agents-workflows-pipeline` env group. Both the API and the Workflows service read the flag from that group.
 
 When `DEMO=true`, the app makes these changes:
