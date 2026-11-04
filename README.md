@@ -1,89 +1,45 @@
 # Pydantic AI Agents
 
-> Render Developer Q&A Assistant showcasing observable AI with Pydantic AI Agents, Pydantic Embedder, Logfire, and Render Workflows
+> A Q&A assistant for the Render docs, built with Pydantic AI agents, Logfire, and Render Workflows
 
 <a href="https://render.com/deploy?repo=https://github.com/render-examples/pydantic-agents-workflows">
   <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32">
 </a>
 
-Intelligent question-answering system that demonstrates real-world AI observability patterns. This example project shows how to build, instrument, and monitor a multi-stage LLM pipeline with full cost tracking, quality evaluation, and performance monitoring.
-
+Ask a question about Render, and the app answers from the Render documentation. Every answer goes through a seven-stage LLM pipeline. Logfire traces each run, with the cost, quality score, and duration of every stage.
 
 https://github.com/user-attachments/assets/68c6ace5-b070-4c7c-9ab6-5d4342134956
 
 ## Table of Contents
 
-- [What This App Does](#what-this-app-does)
-- [What This Demonstrates](#what-this-demonstrates)
+- [Features](#features)
 - [Architecture](#architecture)
-- [Quick Start](#quick-start)
+- [Local development](#local-development)
 - [Deploy to Render](#deploy-to-render)
 - [Demo mode](#demo-mode)
 - [Security](#security)
-- [Example Metrics](#example-metrics)
 - [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
 
----
+## Features
 
-## What This App Does
+- **Hybrid search.** Retrieval combines pgvector similarity with BM25 keyword search, and an LLM expands each question into several queries.
+- **Three verification checks.** *Grounding* extracts the claims in each answer and checks them against the retrieved sources. *Accuracy* reviews the answer for factual errors. *Quality* has an OpenAI model and an Anthropic model each rate the answer.
+- **Grounded answers.** The assistant answers only from retrieved documentation. The prompt does not tell it to favor Render products.
+- **Cost tracking.** The UI shows the cost of each question, per stage.
+- **Live progress.** The UI shows each pipeline stage as it runs.
+- **Render Workflows.** The pipeline and ingestion run as workflow tasks with retries and timeouts. The accuracy and quality checks run at the same time on separate instances.
 
-This is an **AI-powered Q&A assistant for Render documentation**. Users can ask questions about Render's platform, and the app provides accurate, well-researched answers backed by the official documentation.
+The project uses these parts of the [Pydantic](https://pydantic.dev/) stack:
 
-### User Experience
-
-1. **Ask a question** - "How do I deploy a Node.js app on Render?" or "What database plans are available?"
-2. **Watch the pipeline** - Track progress as the run moves through 7 stages (embedding → retrieval → generation → verification)
-3. **Get accurate answers** - Receive detailed responses with sources from Render docs
-4. **Quality guaranteed** - Every answer is verified for accuracy and rated by dual AI evaluators
-
-### Key Features
-
-- **Hybrid search** - Combines semantic understanding with keyword matching for better retrieval
-- **Three verification capabilities** - Each answer goes through *Grounding* (extract claims, verify them against the retrieved sources), *Accuracy* (a factual-correctness review), and *Quality* (a dual-model developer-experience rating) — distinct checks, not redundant ones
-- **Neutral, grounded answers** - The assistant answers only from retrieved documentation, with no product-favorable steering in the prompt; relevant Render docs surface through retrieval, not by being force-sold
-- **Cost tracking** - See exactly how much each question costs to answer
-- **Parallel fan-out** - The pipeline runs on [Render Workflows](https://render.com/docs/workflows), fanning out the Accuracy + dual-model Quality checks across instances so they execute concurrently
-
----
-
-## What This Demonstrates
-
-### Render Capabilities
-
-- **Render Workflows** - The Q&A pipeline and ingestion run as durable workflow tasks with per-task retries, timeouts, and cross-instance parallel fan-out
-- **PostgreSQL with pgvector + full-text** - Managed hybrid search database
-- **Web Service + Static Site** - FastAPI gateway + Next.js frontend
-- **Cron Jobs** - Scheduled ingestion refresh that triggers the workflow fan-out
-- **Blueprint deploy + env groups** - `render.yaml` provisions everything; shared config lives in two env groups
-
-### Logfire Features
-
-- **LLM Traces** - Complete visibility into every AI call (OpenAI + Anthropic auto-instrumented)
-- **HTTP Tracing** - FastAPI auto-instrumentation for request/response tracking
-- **Database Monitoring** - AsyncPG auto-instrumentation for query performance
-- **Cost Tracking** - Per-stage and per-execution cost attribution with custom metrics
-- **Multi-Model Evals** - Dual-rater quality assessment (OpenAI + Anthropic)
-- **Session Tracking** - End-to-end user journey with distributed tracing
-- **Custom Metrics** - Business-specific metrics (cost, quality, accuracy)
-- **SQL Queries** - Custom analytics on AI performance
-
-### Pydantic Stack
-
-This project is built end-to-end on the [Pydantic](https://pydantic.dev/) ecosystem:
-
-- **[Pydantic AI Agents](https://ai.pydantic.dev/agents/)** — every pipeline stage (generation, claims extraction, accuracy check, dual-rater evaluation) is a `pydantic_ai.Agent` with a typed `output_type`. Multi-provider orchestration (Claude + GPT) runs through `OpenAIProvider` / `AnthropicProvider` in a single pipeline. See [`backend/pipeline/`](./backend/pipeline/).
-- **[Pydantic Embedder](https://ai.pydantic.dev/embeddings/)** — `pydantic_ai.Embedder` with `OpenAIEmbeddingModel` powers question embedding (`embed_query`) and batch claim embedding (`embed_documents`) for verification. Auto-instrumented by `logfire.instrument_pydantic_ai()`. See [`backend/pipeline/embeddings.py`](./backend/pipeline/embeddings.py) and [`backend/pipeline/verification.py`](./backend/pipeline/verification.py).
-- **[Pydantic Models](https://docs.pydantic.dev/)** — Claims, accuracy scores, eval dimensions, and pipeline state are parsed directly into Pydantic models (e.g. `ClaimsOutput`, `EvaluationOutput`). `pydantic-settings` manages config in [`backend/config.py`](./backend/config.py).
-- **[Pydantic GenAI Prices](https://github.com/pydantic/genai-prices)** — model pricing is loaded dynamically from the `pydantic/genai-prices` registry, then combined with per-agent token counts from `result.usage()` to produce per-stage cost attribution. See [`backend/prices.py`](./backend/prices.py).
-- **[Logfire](https://logfire.pydantic.dev/)** — distributed traces, custom metrics, dual-model evals, and cost attribution. Auto-instruments FastAPI, AsyncPG, HTTPX, and Pydantic AI. See [`backend/observability.py`](./backend/observability.py).
-
----
+- **[Pydantic AI Agents](https://ai.pydantic.dev/agents/).** Each LLM stage is a `pydantic_ai.Agent` with a typed `output_type`. See [`backend/pipeline/`](./backend/pipeline/).
+- **[Pydantic Embedder](https://ai.pydantic.dev/embeddings/).** `pydantic_ai.Embedder` embeds questions and claims. See [`backend/pipeline/embeddings.py`](./backend/pipeline/embeddings.py).
+- **[Pydantic](https://docs.pydantic.dev/) and pydantic-settings.** Pydantic models parse LLM output and API requests, and pydantic-settings reads the config in [`backend/config.py`](./backend/config.py).
+- **[genai-prices](https://github.com/pydantic/genai-prices).** Model prices come from this registry. The app multiplies them by the token counts from each agent run. See [`backend/prices.py`](./backend/prices.py).
+- **[Logfire](https://logfire.pydantic.dev/).** Logfire records traces, custom metrics, and eval scores. It instruments FastAPI, asyncpg, HTTPX, and Pydantic AI automatically. See [`backend/observability.py`](./backend/observability.py).
 
 ## Architecture
 
-Only the static site and the `api` gateway are public. The gateway triggers **Render Workflows** runs over the Render SDK and polls them for results; the workflows service is private and never HTTP-facing. Both talk to one managed Postgres, and both call out to your LLM providers with your own API keys.
+Only the frontend and the API are public. The API starts Render Workflows runs through the Render SDK and polls them for results. The Workflows service has no public URL.
 
 ```
                       ┌────────────────────────────────────────────┐
@@ -91,354 +47,237 @@ Only the static site and the `api` gateway are public. The gateway triggers **Re
                       └─────────────────────┬──────────────────────┘
                                             │ HTTPS
                       ┌─────────────────────▼──────────────────────┐
-                      │  api  (FastAPI · public web service)       │
-                      │  POST /ask  ·  GET /ask/{run_id}           │
+                      │  api  (FastAPI · public web service)       │──► Key Value
+                      │  POST /ask  ·  GET /ask/{run_id}           │    (demo limits)
                       └─────────────────────┬──────────────────────┘
                                             │ Render SDK
-                                            │ start_task · get_task_run
                       ┌─────────────────────▼──────────────────────┐
-   Cron (daily) ───►  │  workflows  (private · Python 3.13)        │
+   Cron (daily) ───►  │  workflows  (Render Workflows · Python)    │
                       │  run_qa_pipeline  ·  ingest_all            │
                       └──────┬──────────────────────────────┬──────┘
                       ┌──────▼──────────────┐  ┌────────────▼───────────────┐
-                      │  postgres           │  │  external APIs (your keys) │
-                      │  (Render Managed 18)│  │  OpenAI · Anthropic        │
-                      │  pgvector · BM25    │  │  Logfire (traces + evals)  │
-                      └─────────────────────┘  └────────────────────────────┘
+                      │  postgres 18        │  │  external APIs (your keys) │
+                      │  pgvector · BM25    │  │  OpenAI · Anthropic        │
+                      └─────────────────────┘  │  Logfire                   │
+                                               └────────────────────────────┘
 ```
 
-The `api` service also reads Postgres directly — live run progress (the orchestrator writes
-stage updates there, and `GET /ask/{run_id}` reads them back), plus `/history`, `/stats`, and
-`/sessions/{id}/logs`. [`render.yaml`](./render.yaml) defines every service in the diagram.
+The API also reads Postgres directly. The pipeline writes stage updates to Postgres, and `GET /ask/{run_id}` reads them back. The `/history`, `/stats`, and `/sessions/{id}/logs` routes also read Postgres. [`render.yaml`](./render.yaml) defines every service in the diagram.
 
 ### Pipeline stages
 
-`run_qa_pipeline` orchestrates seven stages, promoting only the expensive ones to their own tasks:
+`run_qa_pipeline` runs seven stages. The cheap stages run inside the orchestrator task. The LLM stages run as subtasks, so each one can retry on its own.
 
-| # | Stage | Model | Execution |
-|---|-------|-------|-----------|
-| 1 | Question embedding | OpenAI embeddings | in-process |
-| 2 | Hybrid retrieval (pgvector + BM25, LLM multi-query expansion) | `gpt-5.4-nano` | in-process |
-| 3 | Answer generation | Claude | subtask (3 retries) |
-| 4 | Claims extraction | GPT | subtask |
-| 5 | Claims verification (RAG) | OpenAI embeddings | subtask |
-| 6 | Factual-grounding check | Claude | subtask, parallel with 7 |
-| 7 | Dual-model quality rating | OpenAI + Anthropic | 2 subtasks, parallel with 6 |
+| # | Stage | Default model | Runs as |
+|---|-------|---------------|---------|
+| 1 | Question embedding | `text-embedding-3-small` | orchestrator |
+| 2 | Hybrid retrieval with query expansion | `gpt-5.4-nano` | orchestrator |
+| 3 | Answer generation | `claude-sonnet-5-5` | subtask, 3 retries |
+| 4 | Claims extraction | `gpt-5.4-mini` | subtask |
+| 5 | Claims verification | `text-embedding-3-small` | subtask |
+| 6 | Accuracy check | `claude-sonnet-5-5` | subtask, parallel with 7 |
+| 7 | Quality rating | `gpt-5.4-mini` and `claude-sonnet-5-5` | 2 subtasks, parallel with 6 |
 
-Ingestion runs the same way: `ingest_all` → `ingest_core`, then `ingest_source` fanned out over
-the source registry in [`data/sources.py`](./data/sources.py). A daily cron job triggers it, and
-the `api` service re-seeds pre-embedded pages in its `preDeployCommand`.
+You can change each model in the `pydantic-agents-workflows-pipeline` env group. See [`workflows/app.py`](./workflows/app.py).
 
-> **Why hybrid?** Workflows aren't HTTP-facing, so a client (the gateway) triggers tasks
-> via the SDK and reads run status. Stages 1 and 2 are cheap/data-dependent and stay
-> in-process on the orchestrator; only the heavy, independently-retryable LLM stages are
-> promoted to their own tasks. Stages 6 + 7 run as three concurrent subtasks on separate
-> instances. See [`workflows/app.py`](./workflows/app.py).
+Ingestion runs the same way. `ingest_all` runs `ingest_core`, then runs one `ingest_source` task for each source in [`data/sources.py`](./data/sources.py). A daily cron job starts `ingest_all`. The API also refreshes the live sources in its `preDeployCommand`.
 
-### Project Structure
+### Project structure
 
 ```
-render-qa-assistant/
 ├── backend/
-│   ├── main.py                    # FastAPI gateway (triggers + polls workflow runs)
-│   ├── api/
-│   │   └── logs.py                # Logfire logs API endpoint
-│   ├── pipeline/                  # 7-stage pipeline implementation (reused by workflows)
-│   ├── ingestion.py               # Shared embed + replace-by-source helpers
-│   ├── models.py                  # Pydantic models
-│   ├── database.py                # PostgreSQL + pgvector
-│   ├── observability.py           # Logfire configuration
-│   └── config.py                  # Settings management
-├── workflows/                     # Render Workflows service
-│   ├── app.py                     # Workflows() instance + all @app.task defs
-│   ├── serialization.py           # JSON boundary helpers (model_dump/model_validate)
-│   └── trigger_ingest.py          # Cron entrypoint → start_task("…/ingest_all")
-├── frontend/
-│   ├── src/                       # Next.js + TypeScript UI
-│   └── package.json
+│   ├── main.py            # FastAPI gateway: starts and polls workflow runs
+│   ├── api/               # Route dependencies and the Logfire logs client
+│   ├── pipeline/          # Pipeline stages, used by the workflows
+│   ├── demo.py            # Demo usage limits
+│   ├── database.py        # Postgres and pgvector
+│   ├── models.py          # Pydantic models
+│   ├── prices.py          # Cost calculation
+│   ├── observability.py   # Logfire setup
+│   └── config.py          # Settings
+├── workflows/
+│   ├── app.py             # Workflow task definitions
+│   └── trigger_ingest.py  # Cron entry point
+├── frontend/              # Next.js UI
 ├── data/
-│   ├── embeddings/                # Pre-embedded documentation
-│   ├── curated/                   # Hand-curated source content (markdown)
-│   ├── sources.py                 # Live-source registry (build strategies + metadata)
-│   └── scripts/                   # Data ingestion scripts
-├── docs/
-│   ├── PIPELINE.md                # Detailed pipeline guide
-│   ├── OBSERVABILITY.md           # Logfire instrumentation guide
-│   ├── CONFIGURATION.md           # Configuration reference
-│   └── HYBRID_SEARCH.md           # Hybrid search deep-dive
-├── pyproject.toml                 # Python dependencies (uv)
-├── uv.lock                        # Locked dependency versions
-├── .python-version                # Pins Python to 3.13
-├── render.yaml                    # Infrastructure as code
-├── .env.example                   # Environment variables template
-└── README.md                      # This file
+│   ├── sources.py         # Live source registry
+│   ├── curated/           # Hand-written source content
+│   ├── embeddings/        # Pre-embedded documentation
+│   └── scripts/           # Ingestion scripts
+├── docs/                  # Detailed guides
+├── tests/                 # pytest suite
+└── render.yaml            # Blueprint
 ```
 
----
-
-## Quick Start
+## Local development
 
 ### Prerequisites
 
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (manages Python 3.13 automatically)
-- Node.js 18+
-- PostgreSQL 16+ (with pgvector extension >= 0.5.0, for the HNSW vector index)
-- OpenAI API key
-- Anthropic API key
-- **Logfire account** — sign in at [logfire.pydantic.dev](https://logfire.pydantic.dev), create a project (US region), then:
-  1. **Settings → Write Tokens** → create a token → `LOGFIRE_TOKEN` in `.env`
-  2. **Settings → Read Tokens** → create a token → `LOGFIRE_READ_TOKEN` in `.env`
-  3. View traces in the **Live** panel under your project
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), which installs Python 3.13
+- Node.js 20.9 or later
+- Docker, for the local Postgres and Key Value
+- The [Render CLI](https://render.com/docs/cli), for the local workflow server
+- An OpenAI API key and an Anthropic API key
+- A Logfire project in the US region. Under **Settings**, create a write token for `LOGFIRE_TOKEN` and a read token for `LOGFIRE_READ_TOKEN`.
 
-### Local Development (with Make)
+### Set up
 
 ```bash
-# 1. Install everything (uv installs Python 3.13 automatically)
-make install
+make install           # Install Python and Node dependencies
+cp .env.example .env   # Then add your keys
+make db-start          # Start Postgres with pgvector
+make ingest            # Load the documentation. This step takes a while.
+```
 
-# 2. Set up .env file (copy from example and fill in your keys)
-cp .env.example .env
+### Run
 
-# 3. Start database
-make db-start
+`POST /ask` needs a Workflows service. Run one locally with the Render CLI:
 
-# 4. Load documentation (this step might take a while!)
-make ingest
+```bash
+# Terminal 1: local workflow server on port 8120
+render workflows dev -- uv run render-workflows workflows.app:app
 
-# 5. Run backend (in one terminal)
-make run-backend
+# Terminal 2: API, pointed at the local workflow server
+RENDER_USE_LOCAL_DEV=true WORKFLOW_SLUG=local \
+  uv run uvicorn backend.main:app --reload --port 8000
 
-# 6. Run frontend (in another terminal)
+# Terminal 3: frontend
 make run-frontend
 ```
 
-> **Asking questions locally requires a deployed Workflow for now.** `POST /ask` delegates to a
-> Workflows service; with nothing to delegate to it returns `503 WORKFLOW_SLUG is not configured`.
-> But you can run the rest of the stack locally — no Render cloud resources, no API key — with a local dev server:
->
-> ```bash
-> # Terminal 1 — local workflow dev server (loads .env, listens on :8120)
-> render workflows dev -- uv run render-workflows workflows.app:app
->
-> # Terminal 2 — gateway pointed at the local dev server
-> RENDER_USE_LOCAL_DEV=true WORKFLOW_SLUG=local \
->   uv run uvicorn backend.main:app --reload --port 8000
->
-> # Terminal 3 — frontend
-> cd frontend && npm run dev
-> ```
->
-> `RENDER_USE_LOCAL_DEV=true` points the SDK at `http://localhost:8120` instead of Render's cloud
-> (no token needed); `WORKFLOW_SLUG=local` just satisfies the gateway's guard. Set both in `.env`
-> to skip the prefixes. The workflow runs against your local `DATABASE_URL`, so **History**
-> populates normally. *(Alternatively, set `RENDER_API_KEY` + the real `WORKFLOW_SLUG` to target a
-> deployed cloud Workflows service, which writes to its own database.)*
+To skip the prefixes, set `RENDER_USE_LOCAL_DEV=true` and `WORKFLOW_SLUG=local` in `.env`. To use a deployed Workflows service instead, set `RENDER_API_KEY` and its real `WORKFLOW_SLUG`. A deployed service writes to its own database.
 
-> **Local config → deployed env groups.** Locally every process reads one `.env` (copied from
-> [`.env.example`](./.env.example)). On deploy that same config splits into the two Render env
-> groups in [`render.yaml`](./render.yaml) — see [Deploy → Environment groups](#environment-groups).
-> Local-only knobs (`RENDER_USE_LOCAL_DEV`, the Docker `DATABASE_URL`) aren't in any group; in the
-> cloud the SDK uses the platform socket and `DATABASE_URL` is injected from the database.
+Open the frontend at http://localhost:3000 and the API docs at http://localhost:8000/docs.
 
-`make ingest` runs the full pipeline: bulk doc embeddings, plus the curated "special pages" that get explicit-injection into RAG context (pricing, AI agent, autoscaling, Node.js). These live sources are defined in the [`data/sources.py`](./data/sources.py) registry and ingested through the shared build → embed → replace-by-source helpers. To re-load just one of those after editing its registry entry (or curated content), use the per-target shortcuts:
+### Refresh one source
+
+After you edit a source in `data/sources.py` or `data/curated/`, reload only that source:
 
 ```bash
-make add-pricing      # render.com/pricing tables
-make add-ai-agent     # render.com/tutorials/agents-on-render-workflows (AI agents → Render Workflows)
-make add-autoscaling  # render.com/docs/scaling
-make add-nodejs       # render.com/docs/deploy-node-express-app
+make add-pricing           # render.com/pricing
+make add-ai-agent          # Render Workflows agents tutorial and docs
+make add-autoscaling       # render.com/docs/scaling
+make add-nodejs            # render.com/docs/deploy-node-express-app
+make add-tutorials-index   # render.com/tutorials index
 ```
 
-**Access locally:**
+### Run the tests
 
-- Frontend: http://localhost:3000
-- API docs: http://localhost:8000/docs
-- Logfire: https://logfire.pydantic.dev
-
----
+```bash
+uv run pytest
+```
 
 ## Deploy to Render
 
-### 1. Set up a Logfire account.
+### 1. Create Logfire tokens
 
-Before clicking the deploy button, sign in at [logfire.pydantic.dev](https://logfire.pydantic.dev), create a project (US region), and generate two tokens:
+Sign in at [logfire.pydantic.dev](https://logfire.pydantic.dev) and create a project in the US region. Under **Settings**, create a write token and a read token.
 
-- **Preferences → Write Tokens** → create token → save as `LOGFIRE_TOKEN`
-- **Preferences → Read Tokens** → create token → save as `LOGFIRE_READ_TOKEN`
-
-You'll paste both into the Render Dashboard in step 2.
-
-### 2. One-click deploy
+### 2. Deploy the Blueprint
 
 <a href="https://render.com/deploy?repo=https://github.com/render-examples/pydantic-agents-workflows">
   <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32">
 </a>
 
-Render reads [`render.yaml`](./render.yaml) and provisions:
+Render reads [`render.yaml`](./render.yaml) and creates these resources:
 
-- PostgreSQL 18 database with pgvector (`pydantic-agents-workflows-db`)
-- Workflows service (`pydantic-agents-workflows`) that runs the Q&A pipeline and ingestion tasks
-- API gateway web service (`pydantic-agents-workflows-api`, FastAPI + Logfire)
-- Ingestion refresh cron (`pydantic-agents-workflows-ingest`, triggers the workflow daily)
-- Frontend static site (`pydantic-agents-workflows-frontend`, Next.js)
-- Key Value instance (`pydantic-agents-workflows-kv`, free plan) for the demo usage limits. The API connects to it only when `DEMO=true`.
-- Two **environment groups** that hold all shared config (see below)
+| Resource | Name |
+|---|---|
+| Postgres 18 with pgvector | `pydantic-agents-workflows-db` |
+| Workflows service | `pydantic-agents-workflows` |
+| API web service | `pydantic-agents-workflows-api` |
+| Daily ingest cron job | `pydantic-agents-workflows-ingest` |
+| Frontend static site | `pydantic-agents-workflows-frontend` |
+| Key Value, free plan, used only when `DEMO=true` | `pydantic-agents-workflows-kv` |
 
-On **Apply**, Render prompts once for the secret values in the env groups. You fill these at
-the **group** level, not per service:
+Render asks for these secrets once, at the env group level:
 
 | Variable | Source |
 |---|---|
 | `OPENAI_API_KEY` | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| `LOGFIRE_TOKEN` | Logfire write token from step 1 |
-| `LOGFIRE_READ_TOKEN` | Logfire read token from step 1 |
+| `LOGFIRE_TOKEN` | Logfire write token |
+| `LOGFIRE_READ_TOKEN` | Logfire read token |
 | `RENDER_API_KEY` | [Render Account Settings → API Keys](https://dashboard.render.com/settings#api-keys) |
 
-The gateway and the cron get `WORKFLOW_SLUG` from the Workflows service, and every service
-that needs `DATABASE_URL` gets it from the database. You do not set either one.
+The Blueprint sets the other connection values for you: `DATABASE_URL`, `REDIS_URL`, `WORKFLOW_SLUG`, `CORS_ORIGINS`, and the frontend's `NEXT_PUBLIC_API_URL`.
 
-#### Environment groups
-
-`render.yaml` defines two reusable [env groups](https://render.com/docs/configure-environment-variables#environment-groups)
-so config lives in one place instead of being duplicated across services:
+There are two [env groups](https://render.com/docs/configure-environment-variables#environment-groups):
 
 | Group | Contents | Linked to |
 |---|---|---|
-| **`pydantic-agents-workflows-pipeline`** | LLM/Logfire secrets + all pipeline, RAG, and model config (~20 vars) | API gateway **and** the Workflows service |
-| **`pydantic-agents-workflows-pipeline-trigger`** | `RENDER_API_KEY` | API gateway **and** the ingest cron |
+| `pydantic-agents-workflows-pipeline` | LLM and Logfire secrets, models, RAG settings, demo settings | API and Workflows service |
+| `pydantic-agents-workflows-pipeline-trigger` | `RENDER_API_KEY` | API and ingest cron job |
 
-The gateway and the Workflows service both run `backend.config.Settings`, so both link
-`pydantic-agents-workflows-pipeline` and get the same config.
+When you save a change to a group, Render redeploys every service linked to it.
 
-> Edit a group under **Dashboard → Env Groups → `<group>`**. Saving re-deploys every service
-> linked to it.
+### 3. Load the documentation
 
-### 3. Wire the frontend to the backend
-
-After the gateway web service deploys, copy its public URL from the service's Dashboard page and set it as
-the `NEXT_PUBLIC_API_URL` env var on the **frontend** service, then redeploy the frontend so the
-value takes effect. For this deploy that's:
-
-```
-NEXT_PUBLIC_API_URL=https://pydantic-agents-workflows-api.onrender.com
-```
-
-Use the **base origin only** — no trailing slash and no `/api` path (the frontend appends
-`/ask`, `/health`, etc. itself). If your service name isn't globally unique, Render adds a random
-suffix (`…-api-xxxx.onrender.com`), so always copy the exact URL shown in the Dashboard.
-
-Click **Save and rebuild**.
-
-### 4. Seed the corpus, then done
-
-The Workflows service has no documents until ingestion runs. Trigger it once to seed the DB
-(the cron will keep it fresh afterward):
+The database is empty until ingestion runs. Start it once. After that, the cron job keeps it current.
 
 ```bash
-render workflows start ingest_all   # or start the ingest_all task in the Dashboard with no payload
+render workflows start ingest_all
 ```
 
-### 5. (Optional) Smoke-test the pipeline from the Dashboard
+You can also start the `ingest_all` task in the Dashboard with no input.
 
-Once the corpus is seeded, you can run the Q&A pipeline directly in the [Render dashboard](https://dashboard.render.com) — no frontend needed. In the
-**Workflows service → Tasks**, start the **`run_qa_pipeline`** task with this input:
+To test the pipeline without the frontend, open **Workflows service → Tasks** in the Dashboard and start `run_qa_pipeline` with this input:
 
 ```
 "How do I deploy an AI agent on Render?"
 ```
 
-> **Note:** The API has no login, so anyone who finds its URL can spend your OpenAI and
-> Anthropic credits. Read [Security](#security) before you share the URL.
+> **Note:** The API has no login, so anyone who finds its URL can spend your OpenAI and Anthropic credits. Read [Security](#security) before you share the URL.
 
 ## Demo mode
 
-Set `DEMO=true` to run a public demo with no login. The demo runs on your OpenAI and Anthropic keys, so it limits how many questions visitors can ask.
+Set `DEMO=true` in the `pydantic-agents-workflows-pipeline` env group to run a public demo with no login. Demo mode limits how many questions visitors can ask, because the demo spends your OpenAI and Anthropic credits. `DEMO` is `false` in `render.yaml`, so a fork has no limits until you turn demo mode on.
 
-`DEMO` also accepts `1`, `yes`, `y`, `t`, and `on`, in any letter case. Any other value turns demo mode off.
+`DEMO` also accepts `1`, `yes`, `y`, `t`, and `on`, in any letter case. Any other value turns demo mode off. Check the startup logs of the API and Workflows service for `[startup] DEMO mode enabled`.
 
-`DEMO` is `false` in `render.yaml`. A fork deploys the full app with no limits until you set `DEMO=true` in the `pydantic-agents-workflows-pipeline` env group. Both the API and the Workflows service read the flag from that group.
+When `DEMO=true`, the app changes as follows:
 
-When `DEMO=true`, the app makes these changes:
+| Capability | In demo mode |
+|---|---|
+| Ask a question | The limits below apply. Answers are limited to 2,000 tokens. |
+| History | The server saves no history. The history panel keeps answers in `sessionStorage`, so they are gone when the tab closes. |
+| `/history` and `/sessions/{id}/logs` | Return 404. |
+| Logs tab | Uses `GET /ask/{run_id}/logs` for your own runs. Logfire keeps logs for one day. |
+| `GET /demo/status` | Returns `{"demo": true, "remaining": N}`, the number of questions the visitor has left. |
 
-| Capability | Demo | Change |
-|---|---|---|
-| Ask a question | On, with limits | The limits below apply. Answers are limited to 2,000 tokens. |
-| Save history to Postgres | Off | The workflow does not save sessions. |
-| History panel | On, in the browser only | Answers are kept in `sessionStorage` and are gone when the tab closes. |
-| `/history` routes | Off | `GET /history` returns an empty list. The other history routes return 404. |
-| Logfire logs | On, for your own runs | The Logs tab uses `GET /ask/{run_id}/logs`. Logs are available for one day. |
-| `/stats` | On | No change. It returns no visitor data. |
-
-The limits count questions by visitor IP address, and the counters are stored in Key Value:
+The limits count questions per visitor IP address. Key Value stores the counters.
 
 | Env var | Default | Limit |
 |---|---|---|
-| `DEMO_RATE_LIMIT_PER_MINUTE` | `3` | Questions per minute from one IP address. |
-| `DEMO_MAX_QUESTIONS_PER_VISITOR` | `10` | Questions per IP address in 24 hours. |
-| `DEMO_DAILY_QUESTION_LIMIT` | `200` | Questions from all visitors in 24 hours. |
+| `DEMO_RATE_LIMIT_PER_MINUTE` | `3` | Questions per minute from one IP address |
+| `DEMO_MAX_QUESTIONS_PER_VISITOR` | `10` | Questions per IP address in 24 hours |
+| `DEMO_DAILY_QUESTION_LIMIT` | `200` | Questions from all visitors in 24 hours |
 
-A value of `0` turns off that limit. A missing or invalid value uses the default. Only a question that starts a pipeline run counts. Polling for the answer, loading history, and opening logs do not count. When a limit is reached, the API returns 429 and the UI shows a Deploy to Render button. If the API cannot reach Key Value in demo mode, it returns 503 and does not start a run.
+A value of `0` turns off that limit. A missing or invalid value uses the default. Only a question that starts a run counts, so polling and logs do not use up questions. When a visitor reaches a limit, the API returns 429 and the UI shows a Deploy to Render button. If the API cannot reach Key Value, it returns 503 and does not start a run.
 
-On Render, `render.yaml` sets `REDIS_URL` on the API from the Key Value instance. To run demo mode locally, start Key Value with `docker compose up keyvalue` and set `REDIS_URL=redis://localhost:6379` in `.env`.
+The free Key Value plan does not persist data, so the counters reset when the instance restarts. To run demo mode locally, run `docker compose up keyvalue` and set `REDIS_URL=redis://localhost:6379` in `.env`.
 
-Visitors cannot see each other's history, and the demo stores no history on the server. The free Key Value plan does not persist data, so the counters reset if the instance restarts.
-
-To stop a demo quickly, suspend the API service in the Dashboard or set `DEMO_DAILY_QUESTION_LIMIT` to `1`.
+To stop a demo quickly, suspend the API service or set `DEMO_DAILY_QUESTION_LIMIT` to `1`.
 
 ## Security
 
-- The API's `onrender.com` URL is public and has no login, so anyone who finds it spends your OpenAI and Anthropic credits. Set `DEMO=true` to cap usage, and set monthly spend limits in the OpenAI and Anthropic consoles.
-- `RENDER_API_KEY` grants access to every service in its workspace. Use a separate workspace for a public deploy.
-- The API accepts browser requests only from the frontend. `render.yaml` sets `CORS_ORIGINS` to the frontend's host. For local development the default is `http://localhost:3000`.
-- The database and Key Value instance accept no connections from the public internet. To run the ingest scripts from your computer, add your IP address to the database's **Access Control** list in the Dashboard.
-- Preview environments are off, so pull requests do not deploy copies that use your keys.
+- The API has a public `onrender.com` URL and no login. Set `DEMO=true` to limit usage, and set monthly spend limits in the OpenAI and Anthropic consoles.
+- `RENDER_API_KEY` can access every service in its workspace. Use a separate workspace for a public deploy.
 - Only the browser that started a run can poll it or open its logs. `POST /ask` returns a `progress_token`, and `GET /ask/{run_id}` returns 404 without the matching token.
+- Outside demo mode, the browser sends a random UUID in the `X-Client-Id` header, and each browser sees only its own history.
+- The API accepts browser requests only from the frontend origin in `CORS_ORIGINS`. The local default is `http://localhost:3000`.
+- Postgres and Key Value accept no connections from the public internet. To run the ingest scripts from your computer, add your IP address to the database's **Access Control** list.
+- Preview environments are off, so pull requests do not deploy copies that use your keys.
 
 ## Documentation
 
-### Core Guides
+- [docs/PIPELINE.md](./docs/PIPELINE.md): the pipeline stages
+- [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md): Logfire instrumentation
+- [docs/CONFIGURATION.md](./docs/CONFIGURATION.md): all settings
+- [docs/HYBRID_SEARCH.md](./docs/HYBRID_SEARCH.md): hybrid search
 
-- **[docs/PIPELINE.md](./docs/PIPELINE.md)** - Detailed breakdown of the 7-stage pipeline
-- **[docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md)** - Comprehensive Logfire instrumentation guide
-- **[docs/CONFIGURATION.md](./docs/CONFIGURATION.md)** - All configuration options and tuning
-- **[docs/HYBRID_SEARCH.md](./docs/HYBRID_SEARCH.md)** - Technical deep-dive on hybrid search
-
-### External Resources
-
-- **Logfire Documentation:** https://docs.pydantic.dev/logfire/
-- **Pydantic AI Documentation:** https://ai.pydantic.dev/
-- **Render Documentation:** https://docs.render.com/
-
----
+External docs: [Logfire](https://logfire.pydantic.dev/docs/), [Pydantic AI](https://ai.pydantic.dev/), and [Render](https://render.com/docs).
 
 ## Contributing
 
-This is a demo project, but improvements are welcome!
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
----
-
-## License
-
-MIT License - see LICENSE file for details
-
----
-
-## Acknowledgments
-
-Built to showcase:
-
-- **Logfire** by Pydantic - AI observability platform
-- **Render** - Modern cloud platform
-- **Pydantic AI** - Type-safe AI agent framework
-- **OpenAI & Anthropic** - LLM providers
-
----
-
-**Ready to build observable AI?** Fork this repo and deploy to Render to get started!
+Fork the repository, make your change on a branch, add tests, and open a pull request.
