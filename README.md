@@ -201,7 +201,9 @@ Render asks for these secrets once, at the env group level:
 | `LOGFIRE_READ_TOKEN` | Logfire read token |
 | `RENDER_API_KEY` | [Render Account Settings → API Keys](https://dashboard.render.com/settings#api-keys) |
 
-The Blueprint sets the other connection values for you: `DATABASE_URL`, `WORKFLOW_SLUG`, `CORS_ORIGINS`, and the frontend's `NEXT_PUBLIC_API_URL`.
+Render also asks for `CORS_ORIGINS` on the API service. The frontend URL does not exist yet, so enter `http://localhost:3000` for now. You replace it in step 3.
+
+The Blueprint sets the other connection values for you: `DATABASE_URL`, `WORKFLOW_SLUG`, and the frontend's `NEXT_PUBLIC_API_URL`.
 
 There are two [env groups](https://render.com/docs/configure-environment-variables#environment-groups):
 
@@ -212,7 +214,17 @@ There are two [env groups](https://render.com/docs/configure-environment-variabl
 
 When you save a change to a group, Render redeploys every service linked to it.
 
-### 3. Load the documentation
+### 3. Allow the frontend to call the API
+
+The API accepts browser requests only from the origins in `CORS_ORIGINS`. Until you set it, the frontend shows "Failed to fetch".
+
+1. In the Dashboard, open `pydantic-agents-workflows-frontend` and copy its URL, for example `https://pydantic-agents-workflows-frontend-ab12.onrender.com`.
+2. Open `pydantic-agents-workflows-api` → **Environment**.
+3. Set `CORS_ORIGINS` to the frontend URL and save. Render redeploys the API.
+
+Set it on the API service, not in an env group. Only the API reads it. To add a custom domain, list both origins, separated by a comma.
+
+### 4. Load the documentation
 
 The database is empty until ingestion runs. Start it once. After that, the cron job keeps it current.
 

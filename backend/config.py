@@ -89,8 +89,7 @@ class Settings(BaseSettings):
     environment: str = "production"
     
     # CORS. Origins the browser may call the API from. Accepts a JSON list or a
-    # comma-separated string. A bare host gets an `https://` prefix. A bare
-    # service name (as Render's `fromService` `host` gives) also gets `.onrender.com`.
+    # comma-separated string. A bare host gets an `https://` prefix.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
     # Public demo mode. Off by default; see the README "Demo mode" section.
@@ -107,8 +106,6 @@ class Settings(BaseSettings):
             v = json.loads(v) if v.startswith("[") else v.split(",")
         if isinstance(v, list):
             origins = [str(o).strip().rstrip("/") for o in v if str(o).strip()]
-            # A name with no dot or port is a Render service name from `fromService` `host`.
-            origins = [o if any(c in o for c in ".:") else f"{o}.onrender.com" for o in origins]
             return [o if "://" in o else f"https://{o}" for o in origins]
         return v
 
