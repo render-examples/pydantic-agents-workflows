@@ -7,7 +7,8 @@ import AnswerDisplay from '@/components/AnswerDisplay'
 import MetricsPanel from '@/components/MetricsPanel'
 import MetricsSkeleton from '@/components/MetricsSkeleton'
 import HistoryPanel from '@/components/HistoryPanel'
-import { askQuestion, DemoLimitError, getDemoStatus, saveDemoAnswer } from '@/lib/api'
+import { askQuestion, DemoLimitError, getDemoStatus } from '@/lib/api'
+import { saveDemoAnswer } from '@/lib/demoHistory'
 import type { AnswerResponse, ProgressUpdate } from '@/types'
 
 export default function Home() {
@@ -64,7 +65,7 @@ export default function Home() {
         }
       )
 
-      saveDemoAnswer(result)
+      if (demo) saveDemoAnswer(result)
       setAnswer(result)
     } catch (err) {
       if (controller.signal.aborted) {
@@ -178,6 +179,7 @@ export default function Home() {
         onLoadSession={handleLoadSession}
         isOpen={historyOpen}
         onToggle={() => setHistoryOpen(!historyOpen)}
+        demo={demo}
       />
 
       {/* Footer */}

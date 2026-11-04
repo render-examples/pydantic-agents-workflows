@@ -2,16 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import { FaListCheck, FaXmark } from 'react-icons/fa6'
-import { getHistory, deleteSession, clearAllHistory, type HistorySession } from '@/lib/api'
+import { serverHistory, type HistorySession } from '@/lib/api'
+import { demoHistory } from '@/lib/demoHistory'
 import type { AnswerResponse } from '@/types'
 
 interface HistoryPanelProps {
   onLoadSession: (session: AnswerResponse) => void
   isOpen: boolean
   onToggle: () => void
+  demo: boolean
 }
 
-export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: HistoryPanelProps) {
+const HISTORY_LIMIT = 20
+
+export default function HistoryPanel({ onLoadSession, isOpen, onToggle, demo }: HistoryPanelProps) {
   const [sessions, setSessions] = useState<HistorySession[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -20,25 +24,19 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
 
-  const loadHistory = async () => {
-    try {
-      setLoading(true)
-      const history = await getHistory(20)
-      setSessions(history)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load history')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [reloadCount, setReloadCount] = useState(0)
+  const history = demo ? demoHistory : serverHistory
 
-  // Load history on mount. Set state only in the promise callbacks.
+  // Load on mount, when the panel opens, when demo mode changes, and on Refresh.
+  // Set state only in the promise callbacks.
   useEffect(() => {
     let ignore = false
-    getHistory(20)
-      .then(history => {
-        if (!ignore) setSessions(history)
+    history
+      .list(HISTORY_LIMIT)
+      .then(sessions => {
+        if (ignore) return
+        setSessions(sessions)
+        setError(null)
       })
       .catch(err => {
         if (!ignore) setError(err instanceof Error ? err.message : 'Failed to load history')
@@ -49,26 +47,12 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
     return () => {
       ignore = true
     }
-  }, [])
+  }, [history, isOpen, reloadCount])
 
-  // Reload when the panel opens, so answers from this session show up.
-  useEffect(() => {
-    if (!isOpen) return
-    let ignore = false
-    getHistory(20)
-      .then(history => {
-        if (!ignore) {
-          setSessions(history)
-          setError(null)
-        }
-      })
-      .catch(err => {
-        if (!ignore) setError(err instanceof Error ? err.message : 'Failed to load history')
-      })
-    return () => {
-      ignore = true
-    }
-  }, [isOpen])
+  const refreshHistory = () => {
+    setLoading(true)
+    setReloadCount(count => count + 1)
+  }
 
   const handleSessionClick = (session: HistorySession) => {
     // Convert HistorySession to AnswerResponse format
@@ -102,7 +86,7 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
 
     try {
       setDeleting(sessionId)
-      await deleteSession(sessionId)
+      await history.remove(sessionId)
       setSessions(sessions.filter(s => s.id !== sessionId))
       setError(null)
     } catch (err) {
@@ -120,7 +104,7 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
 
     try {
       setLoading(true)
-      await clearAllHistory()
+      await history.clear()
       setSessions([])
       setShowClearConfirm(false)
       setSelectedIds(new Set())
@@ -161,7 +145,7 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
     try {
       setLoading(true)
       // Delete all selected sessions
-      await Promise.all(Array.from(selectedIds).map(id => deleteSession(id)))
+      await Promise.all(Array.from(selectedIds).map(id => history.remove(id)))
       
       // Remove from UI
       setSessions(sessions.filter(s => !selectedIds.has(s.id)))
@@ -397,7 +381,7 @@ export default function HistoryPanel({ onLoadSession, isOpen, onToggle }: Histor
             ) : (
               <>
                 <button
-                  onClick={loadHistory}
+                  onClick={refreshHistory}
                   disabled={loading}
                   className="w-full px-4 py-2 bg-zinc-900 text-zinc-300 border border-zinc-700 hover:border-purple-800 transition-colors disabled:opacity-50"
                 >

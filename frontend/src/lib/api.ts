@@ -46,51 +46,12 @@ export class DemoLimitError extends Error {
   }
 }
 
-// When true, history lives in sessionStorage. The server stores none in demo mode.
-let demoMode = false
-const DEMO_HISTORY_KEY = 'demo_history'
-
 export async function getDemoStatus(): Promise<DemoStatus> {
   const response = await fetch(`${API_BASE_URL}/demo/status`)
   if (!response.ok) {
     throw new Error(`Failed to fetch demo status: ${response.statusText}`)
   }
-  const status = (await response.json()) as DemoStatus
-  demoMode = status.demo
-  return status
-}
-
-function readDemoHistory(): HistorySession[] {
-  try {
-    return JSON.parse(window.sessionStorage.getItem(DEMO_HISTORY_KEY) || '[]')
-  } catch {
-    return []
-  }
-}
-
-function writeDemoHistory(sessions: HistorySession[]): void {
-  window.sessionStorage.setItem(DEMO_HISTORY_KEY, JSON.stringify(sessions))
-}
-
-/** In demo mode, keep an answer in this tab's history. Does nothing otherwise. */
-export function saveDemoAnswer(answer: AnswerResponse): void {
-  if (!demoMode || !answer.run_id) return
-  const session: HistorySession = {
-    id: answer.run_id,
-    question: answer.question,
-    answer: answer.answer,
-    sources: answer.sources,
-    claims: answer.claims,
-    evaluations: answer.evaluations,
-    quality_score: answer.quality_score,
-    total_cost: answer.total_cost,
-    total_duration_ms: answer.total_duration_ms,
-    created_at: new Date().toISOString(),
-    stages: answer.stages,
-    run_id: answer.run_id,
-    progress_token: answer.progress_token,
-  }
-  writeDemoHistory([session, ...readDemoHistory()].slice(0, 20))
+  return response.json()
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
@@ -132,10 +93,9 @@ export async function askQuestion(
 
   if (startResponse.status === 429) {
     const body = await startResponse.json().catch(() => null)
-    throw new DemoLimitError(
-      body?.detail?.message || 'Demo limit reached. Deploy your own copy to keep going.',
-      body?.detail?.deploy_url || 'https://render.com/deploy?repo=https://github.com/render-examples/pydantic-agents-workflows'
-    )
+    if (body?.detail?.deploy_url) {
+      throw new DemoLimitError(body.detail.message, body.detail.deploy_url)
+    }
   }
 
   if (!startResponse.ok) {
@@ -216,8 +176,6 @@ export interface HistorySession {
 }
 
 export async function getHistory(limit: number = 20): Promise<HistorySession[]> {
-  if (demoMode) return readDemoHistory().slice(0, limit)
-
   const response = await fetch(`${API_BASE_URL}/history?limit=${limit}`, {
     headers: clientHeaders(),
   })
@@ -230,24 +188,7 @@ export async function getHistory(limit: number = 20): Promise<HistorySession[]> 
   return data.sessions
 }
 
-export async function getSession(sessionId: string): Promise<HistorySession> {
-  const response = await fetch(`${API_BASE_URL}/history/${sessionId}`, {
-    headers: clientHeaders(),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch session: ${response.statusText}`)
-  }
-
-  return response.json()
-}
-
 export async function deleteSession(sessionId: string): Promise<void> {
-  if (demoMode) {
-    writeDemoHistory(readDemoHistory().filter((s) => s.id !== sessionId))
-    return
-  }
-
   const response = await fetch(`${API_BASE_URL}/history/${sessionId}`, {
     method: 'DELETE',
     headers: clientHeaders(),
@@ -259,12 +200,6 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 export async function clearAllHistory(): Promise<{ count: number }> {
-  if (demoMode) {
-    const count = readDemoHistory().length
-    writeDemoHistory([])
-    return { count }
-  }
-
   const response = await fetch(`${API_BASE_URL}/history`, {
     method: 'DELETE',
     headers: clientHeaders(),
@@ -275,6 +210,19 @@ export async function clearAllHistory(): Promise<{ count: number }> {
   }
 
   return response.json()
+}
+
+/** A place that stores Q&A history: the server, or the browser in demo mode. */
+export interface HistoryStore {
+  list(limit: number): Promise<HistorySession[]>
+  remove(sessionId: string): Promise<void>
+  clear(): Promise<{ count: number }>
+}
+
+export const serverHistory: HistoryStore = {
+  list: getHistory,
+  remove: deleteSession,
+  clear: clearAllHistory,
 }
 
 // Matches the row shape returned by the backend Logfire query
