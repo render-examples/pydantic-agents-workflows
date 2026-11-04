@@ -28,6 +28,9 @@ logfire.instrument_httpx()        # HTTP client requests
 logfire.instrument_system_metrics()  # System metrics (CPU, memory, swap)
 # Note: FastAPI instrumentation is done in main.py after app creation
 
+# Both the API and the Workflows service import this module, so both log the mode.
+logfire.info("[startup] DEMO mode enabled" if settings.demo else "[startup] normal mode")
+
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -152,15 +155,15 @@ def calculate_anthropic_cost(input_tokens: int, output_tokens: int, model: str) 
 def usage_and_cost(result, cost_fn, model: str) -> dict:
     """Extract token usage from a pydantic-ai run result and compute its cost.
 
-    Centralizes the request/response-token extraction (with the ``or 0`` guard)
+    Centralizes the input/output-token extraction (with the ``or 0`` guard)
     plus the cost calculation that every LLM pipeline stage repeats. ``cost_fn``
     is one of ``calculate_openai_cost`` / ``calculate_anthropic_cost``.
 
     Returns a dict with ``input_tokens``, ``output_tokens``, ``cost_usd``.
     """
     usage = result.usage()
-    input_tokens = usage.request_tokens or 0
-    output_tokens = usage.response_tokens or 0
+    input_tokens = usage.input_tokens or 0
+    output_tokens = usage.output_tokens or 0
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

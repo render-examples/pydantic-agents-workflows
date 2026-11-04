@@ -97,7 +97,7 @@ Evaluate the quality of this answer."""
 
     result = await _anthropic_eval_agent.run(
         user_prompt,
-        model_settings={"temperature": 0.1, "max_tokens": 500},
+        model_settings={"max_tokens": 650},
     )
 
     usage = usage_and_cost(result, calculate_anthropic_cost, settings.eval_model_anthropic)

@@ -23,6 +23,37 @@ export function getClientId(): string {
   return clientId
 }
 
+/** Headers that identify this browser to the history routes. */
+function clientHeaders(): Record<string, string> {
+  return { 'X-Client-Id': getClientId() }
+}
+
+// --- Demo mode -------------------------------------------------------------
+
+export interface DemoStatus {
+  demo: boolean
+  remaining?: number | null
+}
+
+/** Thrown when the API returns 429 because a demo limit is used up. */
+export class DemoLimitError extends Error {
+  deployUrl: string
+
+  constructor(message: string, deployUrl: string) {
+    super(message)
+    this.name = 'DemoLimitError'
+    this.deployUrl = deployUrl
+  }
+}
+
+export async function getDemoStatus(): Promise<DemoStatus> {
+  const response = await fetch(`${API_BASE_URL}/demo/status`)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch demo status: ${response.statusText}`)
+  }
+  return response.json()
+}
+
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms)
@@ -37,6 +68,14 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
+export interface AskQuestionOptions {
+  /** Called once for each new pipeline stage update. */
+  onProgress?: (update: ProgressUpdate) => void
+  /** Called when the run starts, with the demo questions left (undefined outside demo mode). */
+  onStart?: (remaining: number | null | undefined) => void
+  signal?: AbortSignal
+}
+
 /**
  * Ask a question via the Workflows-backed pipeline.
  *
@@ -48,8 +87,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export async function askQuestion(
   question: string,
-  onProgress?: (update: ProgressUpdate) => void,
-  signal?: AbortSignal
+  { onProgress, onStart, signal }: AskQuestionOptions = {}
 ): Promise<AnswerResponse> {
   // 1. Trigger the workflow run.
   const startResponse = await fetch(`${API_BASE_URL}/ask`, {
@@ -59,16 +97,25 @@ export async function askQuestion(
     signal,
   })
 
+  if (startResponse.status === 429) {
+    const body = await startResponse.json().catch(() => null)
+    if (body?.detail?.deploy_url) {
+      throw new DemoLimitError(body.detail.message, body.detail.deploy_url)
+    }
+  }
+
   if (!startResponse.ok) {
     throw new Error(`API error: ${startResponse.statusText}`)
   }
 
-  const { run_id: runId, progress_token: progressToken } = (await startResponse.json()) as {
+  const { run_id: runId, progress_token: progressToken, remaining } = (await startResponse.json()) as {
     run_id: string
-    progress_token?: string
+    progress_token: string
+    remaining?: number | null
   }
+  onStart?.(remaining)
 
-  const progressQuery = progressToken ? `?progress_token=${encodeURIComponent(progressToken)}` : ''
+  const progressQuery = `?progress_token=${encodeURIComponent(progressToken)}`
 
   // 2. Poll for completion. The server returns the cumulative list of stage
   //    updates each time; replay only the ones we haven't surfaced yet.
@@ -98,7 +145,7 @@ export async function askQuestion(
     replayNew(data.updates)
 
     if (data.status === 'done' && data.result) {
-      return data.result
+      return { ...data.result, run_id: runId, progress_token: progressToken }
     }
 
     if (data.status === 'failed') {
@@ -130,13 +177,15 @@ export interface HistorySession {
   created_at: string
   stages?: any[]  // Pipeline stages (optional for backwards compatibility)
   trace_id?: string  // Logfire trace ID (optional)
+  run_id?: string  // Demo mode: run that produced the answer
+  progress_token?: string  // Demo mode: token that opens the run's logs
 }
 
 export async function getHistory(limit: number = 20): Promise<HistorySession[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/history?limit=${limit}&client_id=${encodeURIComponent(getClientId())}`
-  )
-  
+  const response = await fetch(`${API_BASE_URL}/history?limit=${limit}`, {
+    headers: clientHeaders(),
+  })
+
   if (!response.ok) {
     throw new Error(`Failed to fetch history: ${response.statusText}`)
   }
@@ -145,44 +194,41 @@ export async function getHistory(limit: number = 20): Promise<HistorySession[]> 
   return data.sessions
 }
 
-export async function getSession(sessionId: string): Promise<HistorySession> {
-  const response = await fetch(
-    `${API_BASE_URL}/history/${sessionId}?client_id=${encodeURIComponent(getClientId())}`
-  )
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch session: ${response.statusText}`)
-  }
-
-  return response.json()
-}
-
 export async function deleteSession(sessionId: string): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/history/${sessionId}?client_id=${encodeURIComponent(getClientId())}`,
-    {
-      method: 'DELETE',
-    }
-  )
-  
+  const response = await fetch(`${API_BASE_URL}/history/${sessionId}`, {
+    method: 'DELETE',
+    headers: clientHeaders(),
+  })
+
   if (!response.ok) {
     throw new Error(`Failed to delete session: ${response.statusText}`)
   }
 }
 
 export async function clearAllHistory(): Promise<{ count: number }> {
-  const response = await fetch(
-    `${API_BASE_URL}/history?client_id=${encodeURIComponent(getClientId())}`,
-    {
-      method: 'DELETE',
-    }
-  )
-  
+  const response = await fetch(`${API_BASE_URL}/history`, {
+    method: 'DELETE',
+    headers: clientHeaders(),
+  })
+
   if (!response.ok) {
     throw new Error(`Failed to clear history: ${response.statusText}`)
   }
 
   return response.json()
+}
+
+/** A place that stores Q&A history: the server, or the browser in demo mode. */
+export interface HistoryStore {
+  list(limit: number): Promise<HistorySession[]>
+  remove(sessionId: string): Promise<void>
+  clear(): Promise<{ count: number }>
+}
+
+export const serverHistory: HistoryStore = {
+  list: getHistory,
+  remove: deleteSession,
+  clear: clearAllHistory,
 }
 
 // Matches the row shape returned by the backend Logfire query
@@ -206,22 +252,32 @@ export interface SessionLogsResponse {
   record_count: number
 }
 
-export async function getSessionLogs(sessionId: string): Promise<SessionLogsResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/sessions/${sessionId}/logs?client_id=${encodeURIComponent(getClientId())}`
-  )
-  
+async function parseLogsResponse(response: Response): Promise<SessionLogsResponse> {
   if (!response.ok) {
     if (response.status === 404) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Logs not found')
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.detail || 'Logs not found')
     }
     if (response.status === 501) {
       throw new Error('Logfire integration not configured')
     }
     throw new Error('Failed to fetch logs')
   }
-  
+
   return response.json()
 }
 
+export async function getSessionLogs(sessionId: string): Promise<SessionLogsResponse> {
+  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/logs`, {
+    headers: clientHeaders(),
+  })
+  return parseLogsResponse(response)
+}
+
+/** Fetch logs for a run this browser started. Works in demo mode. */
+export async function getRunLogs(runId: string, progressToken: string): Promise<SessionLogsResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/ask/${runId}/logs?progress_token=${encodeURIComponent(progressToken)}`
+  )
+  return parseLogsResponse(response)
+}

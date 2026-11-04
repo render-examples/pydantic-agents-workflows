@@ -41,6 +41,7 @@ frontend/node_modules/
 frontend/.env
 frontend/.env.local
 frontend/tsconfig.tsbuildinfo
+frontend/next-env.d.ts
 
 # Testing
 .pytest_cache/

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import QuestionInput from '@/components/QuestionInput'
 import ProgressTracker from '@/components/ProgressTracker'
 import AnswerDisplay from '@/components/AnswerDisplay'
 import MetricsPanel from '@/components/MetricsPanel'
 import MetricsSkeleton from '@/components/MetricsSkeleton'
 import HistoryPanel from '@/components/HistoryPanel'
-import { askQuestion } from '@/lib/api'
+import { askQuestion, DemoLimitError, getDemoStatus } from '@/lib/api'
+import { saveDemoAnswer } from '@/lib/demoHistory'
 import type { AnswerResponse, ProgressUpdate } from '@/types'
 
 export default function Home() {
@@ -16,7 +17,21 @@ export default function Home() {
   const [answer, setAnswer] = useState<AnswerResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [demo, setDemo] = useState(false)
+  const [remaining, setRemaining] = useState<number | null>(null)
+  const [limitError, setLimitError] = useState<DemoLimitError | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    getDemoStatus()
+      .then(status => {
+        setDemo(status.demo)
+        setRemaining(status.remaining ?? null)
+      })
+      .catch(() => {
+        // The status route is optional. Without it the app runs in normal mode.
+      })
+  }, [])
 
   const handleStop = () => {
     abortControllerRef.current?.abort()
@@ -36,19 +51,28 @@ export default function Home() {
     setProgress([])
     setAnswer(null)
     setError(null)
+    setLimitError(null)
 
     try {
-      const result = await askQuestion(
-        question,
-        (update) => {
+      const result = await askQuestion(question, {
+        onProgress: (update) => {
           setProgress((prev) => [...prev, update])
         },
-        controller.signal
-      )
+        onStart: (left) => {
+          if (left !== undefined) setRemaining(left)
+        },
+        signal: controller.signal,
+      })
 
+      if (demo) saveDemoAnswer(result)
       setAnswer(result)
     } catch (err) {
       if (controller.signal.aborted) {
+        return
+      }
+      if (err instanceof DemoLimitError) {
+        setLimitError(err)
+        setRemaining(0)
         return
       }
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -105,7 +129,23 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
           {/* Left Column - Input & Answer */}
           <div className="lg:col-span-2 space-y-6">
-            <QuestionInput onSubmit={handleAskQuestion} loading={loading} onHistoryToggle={() => setHistoryOpen(!historyOpen)} onStop={handleStop} />
+            <QuestionInput onSubmit={handleAskQuestion} loading={loading} onHistoryToggle={() => setHistoryOpen(!historyOpen)} onStop={handleStop} demo={demo} />
+
+            {demo && remaining !== null && (
+              <p className="text-sm text-zinc-400">
+                {remaining} demo question{remaining === 1 ? '' : 's'} left
+              </p>
+            )}
+
+            {limitError && (
+              <div className="bg-purple-500/10 border border-purple-500/50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <p className="text-purple-200 text-sm">{limitError.message}</p>
+                <a href={limitError.deployUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" />
+                </a>
+              </div>
+            )}
 
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 p-4 transition-colors">
@@ -138,6 +178,7 @@ export default function Home() {
         onLoadSession={handleLoadSession}
         isOpen={historyOpen}
         onToggle={() => setHistoryOpen(!historyOpen)}
+        demo={demo}
       />
 
       {/* Footer */}

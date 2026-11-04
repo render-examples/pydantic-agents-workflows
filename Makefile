@@ -1,7 +1,7 @@
 # Makefile for Ask Render Anything Assistant
 # Simplifies common development tasks
 
-.PHONY: help install dev-setup db-start db-stop db-reset ingest crawl-tutorials embed-tutorials add-pricing add-ai-agent add-autoscaling add-nodejs add-tutorials-index run-backend run-frontend clean
+.PHONY: help install dev-setup db-start db-stop db-reset ingest crawl-tutorials embed-tutorials add-pricing add-ai-agent add-autoscaling add-nodejs add-tutorials-index run-backend run-frontend test clean
 
 help:
 	@echo "Ask Render Anything Assistant - Development Commands"
@@ -25,6 +25,7 @@ help:
 	@echo "Development:"
 	@echo "  make run-backend   - Run backend API (port 8000)"
 	@echo "  make run-frontend  - Run frontend dev server (port 3000)"
+	@echo "  make test          - Run the tests against the Docker Compose database"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean         - Clean up build artifacts"
@@ -144,6 +145,12 @@ run-frontend:
 	@echo "🎨 Starting frontend on http://localhost:3000"
 	@echo ""
 	cd frontend && npm run dev
+
+TEST_DATABASE_URL ?= postgresql://render_qa_user:local_dev_password@localhost:5432/render_qa_db
+
+test:
+	docker-compose up -d --wait postgres
+	TEST_DATABASE_URL=$(TEST_DATABASE_URL) uv run pytest
 
 clean:
 	@echo "🧹 Cleaning up..."

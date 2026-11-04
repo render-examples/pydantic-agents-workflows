@@ -1,3 +1,8 @@
+# Preview environments are off, so pull requests do not create copies that
+# spend the deployer's API keys.
+previews:
+  generation: "off"
+
 # Reusable environment variable groups.
 #
 # `pydantic-agents-workflows-pipeline` holds the Q&A pipeline config
@@ -20,7 +25,7 @@ envVarGroups:
         sync: false
       # Pipeline configuration
       - key: MAX_TOKENS
-        value: "4000"
+        value: "5000"
       - key: TIMEOUT_SECONDS
         value: "30"
       # RAG configuration
@@ -36,22 +41,33 @@ envVarGroups:
         value: "1536"
       # Model selection
       - key: ANSWER_MODEL
-        value: claude-sonnet-4-6
+        value: claude-sonnet-5-5
       - key: CLAIMS_MODEL
         value: gpt-5.4-mini
       - key: ACCURACY_MODEL
-        value: claude-sonnet-4-6
+        value: claude-sonnet-5-5
       - key: EVAL_MODEL_OPENAI
         value: gpt-5.4-mini
       - key: EVAL_MODEL_ANTHROPIC
-        value: claude-sonnet-4-6
+        value: claude-sonnet-5-5
       - key: QUERY_EXPANSION_MODEL
-        value: gpt-4.1-nano
+        value: gpt-5.4-nano
       # Performance
       - key: ENABLE_CACHING
         value: "true"
       - key: LOG_LEVEL
         value: INFO
+      # Public demo mode. Keep "false" for a normal deploy. See the README
+      # "Demo mode" section. The limits apply only when DEMO is "true".
+      # A limit of "0" turns that limit off.
+      - key: DEMO
+        value: "false"
+      - key: DEMO_RATE_LIMIT_PER_MINUTE
+        value: "3"
+      - key: DEMO_MAX_QUESTIONS_PER_VISITOR
+        value: "10"
+      - key: DEMO_DAILY_QUESTION_LIMIT
+        value: "200"
 
   - name: pydantic-agents-workflows-pipeline-trigger
     envVars:
@@ -70,6 +86,10 @@ projects:
             plan: basic-1gb
             region: oregon
             postgresMajorVersion: "18"
+            # No connections from the public internet. Services in this
+            # region connect over the private network. Add your own IP here
+            # to run the ingest scripts from your computer.
+            ipAllowList: []
 
         # Services in the production environment
         services:
@@ -121,6 +141,13 @@ projects:
                 fromDatabase:
                   name: pydantic-agents-workflows-db
                   property: connectionString
+              # Allow browser requests only from the frontend. Render gives a
+              # bare host, and backend/config.py adds https://.
+              - key: CORS_ORIGINS
+                fromService:
+                  name: pydantic-agents-workflows-frontend
+                  type: web
+                  property: host
 
           # Ingestion refresh cron — triggers the Workflow's `ingest_all`
           # fan-out on a schedule (Workflows have no built-in scheduling).
@@ -147,16 +174,24 @@ projects:
             rootDir: frontend
             buildCommand: rm -rf node_modules/.cache .next out && npm ci && npm run build
             staticPublishPath: out
-            pullRequestPreviewsEnabled: true
+            headers:
+              - path: /*
+                name: X-Content-Type-Options
+                value: nosniff
+              - path: /*
+                name: Referrer-Policy
+                value: strict-origin-when-cross-origin
+              - path: /*
+                name: X-Frame-Options
+                value: DENY
             envVars:
               # API URL - auto-injected from the backend service's public URL.
               # `fromService` + `envVarKey` pulls Render's auto-injected
               # RENDER_EXTERNAL_URL (https://<slug>-XXXX.onrender.com), resolved
               # at build time before this static site builds — so NEXT_PUBLIC_API_URL
               # is baked into the bundle with the real, suffix-included URL (no
-              # manual post-deploy step, no guessing the -XXXX suffix). This works
-              # without a cyclic dependency because the backend defaults CORS to
-              # "*" and does not reference this frontend's URL (one-directional).
+              # manual post-deploy step, no guessing the -XXXX suffix). The API
+              # reads this site's host for CORS_ORIGINS in the other direction.
               - key: NEXT_PUBLIC_API_URL
                 fromService:
                   name: pydantic-agents-workflows-api

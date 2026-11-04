@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { AnswerResponse } from '@/types'
-import { getSessionLogs, type SessionLogsResponse, type LogfireLog } from '@/lib/api'
+import { getRunLogs, getSessionLogs, type SessionLogsResponse, type LogfireLog } from '@/lib/api'
 
 interface AnswerDisplayProps {
   answer: AnswerResponse
@@ -24,24 +24,33 @@ export default function AnswerDisplay({ answer }: AnswerDisplayProps) {
     ? (verifiedClaimsCount / answer.claims.length * 100).toFixed(0)
     : '0'
 
-  // Fetch logs when Logs tab is activated
-  useEffect(() => {
-    if (activeTab === 'logs' && !logs && !logsLoading && answer.session_id) {
-      setLogsLoading(true)
-      setLogsError(null)
-      
-      getSessionLogs(answer.session_id)
-        .then(data => {
-          setLogs(data)
-        })
-        .catch(err => {
-          setLogsError(err.message || 'Failed to load logs')
-        })
-        .finally(() => {
-          setLogsLoading(false)
-        })
-    }
-  }, [activeTab, logs, logsLoading, answer.session_id])
+  // Saved sessions open logs by session ID. Demo answers open them by run ID.
+  const { session_id: sessionId, run_id: runId, progress_token: progressToken } = answer
+  const fetchLogs = sessionId
+    ? () => getSessionLogs(sessionId)
+    : runId && progressToken
+      ? () => getRunLogs(runId, progressToken)
+      : null
+  const hasLogs = fetchLogs !== null
+
+  // Open the Logs tab and fetch the logs the first time.
+  const openLogsTab = () => {
+    setActiveTab('logs')
+    if (logs || logsLoading || !fetchLogs) return
+
+    setLogsLoading(true)
+    setLogsError(null)
+    fetchLogs()
+      .then(data => {
+        setLogs(data)
+      })
+      .catch(err => {
+        setLogsError(err.message || 'Failed to load logs')
+      })
+      .finally(() => {
+        setLogsLoading(false)
+      })
+  }
 
   return (
     <div className="bg-black border border-zinc-800 overflow-hidden">
@@ -96,9 +105,9 @@ export default function AnswerDisplay({ answer }: AnswerDisplayProps) {
               AI pipeline ({answer.stages.length} stages)
             </button>
           )}
-          {answer.session_id && (
+          {hasLogs && (
             <button
-              onClick={() => setActiveTab('logs')}
+              onClick={openLogsTab}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'logs'
                   ? 'border-purple-600 text-purple-600'
