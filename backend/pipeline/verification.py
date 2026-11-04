@@ -85,8 +85,8 @@ Decide whether the passages substantiate the claim."""
     )
     verdict: ClaimVerdict = result.output
     usage = result.usage()
-    input_tokens = usage.request_tokens or 0
-    output_tokens = usage.response_tokens or 0
+    input_tokens = usage.input_tokens or 0
+    output_tokens = usage.output_tokens or 0
 
     # Map the cited passage indices back to their sources (guard against out-of-range).
     # If the judge supports the claim but names no passage, we leave the citation list
