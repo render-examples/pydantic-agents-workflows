@@ -7,11 +7,10 @@ This module is the Workflow service entrypoint. Run it with the SDK CLI:
 Two families of tasks live here, both thin wrappers over existing code:
 
 * **Q&A pipeline** — ``run_qa_pipeline`` is the orchestrator (one run per
-  question). It runs the data-dependent stages in-process (cheap I/O-bound
-  calls that ``asyncio.gather`` already overlaps for free) and fans out only
-  the two heaviest LLM stages — technical accuracy and dual-model evaluation —
-  as parallel subtasks, where cross-instance parallelism outweighs the
-  per-run spin-up cost.
+  question). It calls every stage function inside its own process. The answer,
+  claims, accuracy, and evaluation agents have a ``RenderWorkflows``
+  capability, so each of their model requests runs as a chained task run
+  (for example, ``answer__model.request``) with its own retries and timeout.
 
 * **Ingestion** — ``ingest_all`` fans the independent per-source ingests out
   across parallel subtasks.
@@ -30,17 +29,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import logfire
-from opentelemetry import context as otel_context
 from opentelemetry import trace
-from opentelemetry.propagate import extract, inject
-from render import Retry, TaskContext, Workflows
+from render import Retry, TaskContext
 
 # Importing observability configures Logfire at module load (same as the web app).
 from backend.observability import pipeline_trace, track_pipeline_metrics
 from backend.config import settings
 from backend.database import vector_store
 from backend.ingestion import embed_documents, replace_source
-from backend.models import AnswerResponse, EvaluationResult, PipelineStageResult
+from backend.models import AnswerResponse, PipelineStageResult
 from backend.pipeline import (
     check_accuracy,
     collapse_sources,
@@ -50,35 +47,24 @@ from backend.pipeline import (
     retrieve_documents,
     verify_claims,
 )
+from backend.pipeline._agents import app
 from backend.pipeline.evaluation import (
     agreement_level,
     build_evaluation_result,
     evaluate_with_anthropic,
     evaluate_with_openai,
 )
-from workflows.serialization import (
-    claims_from_json,
-    claims_to_json,
-    documents_from_json,
-    documents_to_json,
-)
+from backend.pipeline.generation import answer_workflows
 from data.sources import SOURCES
-
-app = Workflows(
-    default_retry=Retry(max_retries=2, wait_duration_ms=1000, backoff_scaling=2.0),
-    default_timeout=300,
-    default_plan="standard",
-)
 
 
 def flush_on_exit(fn):
     """Force-flush buffered Logfire spans before the task's instance terminates.
 
-    Every task — the orchestrator and each subtask — runs on its own short-lived
-    Workflows instance. Without an explicit flush, spans buffered by the OTLP
-    exporter can be lost when the instance exits, so `/sessions/{id}/logs` returns
-    an empty trace. Flushing in a `finally` (success or failure) ensures each
-    instance ships its spans for the shared distributed trace.
+    Every task runs on its own short-lived Workflows instance. Without an
+    explicit flush, spans buffered by the OTLP exporter can be lost when the
+    instance exits, so `/sessions/{id}/logs` returns an empty trace. Flushing in
+    a `finally` (success or failure) makes each instance send its spans.
     """
 
     @functools.wraps(fn)
@@ -87,30 +73,6 @@ def flush_on_exit(fn):
             return await fn(*args, **kwargs)
         finally:
             logfire.force_flush()
-
-    return wrapper
-
-
-def with_trace_context(fn):
-    """Re-attach the orchestrator's OTel context inside a subtask instance.
-
-    Each subtask runs in a fresh process with an empty OTel context, so its
-    auto-instrumented spans would otherwise start a brand-new trace. The
-    orchestrator passes a W3C carrier (the ``trace_context`` kwarg); we extract
-    it and attach it for the whole body so every span created here joins the
-    shared ``qa_pipeline`` trace — making the single stored trace_id contain the
-    full pipeline. No-ops when no carrier is supplied (e.g. manual runs).
-    """
-
-    @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
-        carrier = kwargs.get("trace_context")
-        token = otel_context.attach(extract(carrier)) if carrier else None
-        try:
-            return await fn(*args, **kwargs)
-        finally:
-            if token is not None:
-                otel_context.detach(token)
 
     return wrapper
 
@@ -149,128 +111,11 @@ def _stage_result(
 
 
 # ---------------------------------------------------------------------------
-# Q&A pipeline — per-stage subtasks
-#
-# Each post-retrieval LLM stage is its own retried, right-sized task. A
-# *transient* failure (provider timeout/rate-limit) then retries that stage in
-# isolation instead of failing the orchestrator and re-running the expensive
-# generation from the top. All run on `standard` (the default) — the heavy
-# compute is on the LLM provider, so the instance just holds an HTTP call + text.
-#
-# Every task takes a `TaskContext` first (the SDK supplies it) and is scheduled
-# with `await ctx.run(task, ...)`, which runs it on its own instance.
-#
-# Each subtask also takes a trailing `trace_context` carrier that the body
-# ignores — it's read by `@with_trace_context` (not the function) to join the
-# shared `qa_pipeline` trace. See that decorator for details.
-# ---------------------------------------------------------------------------
-
-@app.task(timeout_seconds=120, retry=Retry(max_retries=3, wait_duration_ms=2000, backoff_scaling=2.0))
-@with_trace_context
-@flush_on_exit
-async def generate_answer_task(
-    ctx: TaskContext,
-    question: str,
-    documents_json: list[dict],
-    trace_context: dict[str, str] | None = None,
-) -> dict:
-    """Subtask: answer generation (Claude). Most expensive + most rate-limit-prone."""
-    await _ensure_ready()
-    documents = documents_from_json(documents_json)
-    return await generate_answer(question, documents)
-
-
-@app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
-@with_trace_context
-@flush_on_exit
-async def extract_claims_task(
-    ctx: TaskContext, answer: str, trace_context: dict[str, str] | None = None
-) -> dict:
-    """Subtask: claims extraction (OpenAI). Returns JSON-native claims + cost."""
-    await _ensure_ready()
-    return await extract_claims(answer)
-
-
-@app.task(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
-@with_trace_context
-@flush_on_exit
-async def verify_claims_task(
-    ctx: TaskContext, claims: list[str], trace_context: dict[str, str] | None = None
-) -> dict:
-    """Subtask: claims verification. Keeps its internal per-claim asyncio.gather
-    (embedding lookups are ms-scale; per-claim fan-out would be slower/costlier)."""
-    await _ensure_ready(db=True)
-    result = await verify_claims(claims)
-    return {
-        "verified_claims": claims_to_json(result["verified_claims"]),
-        "verification_rate": result["verification_rate"],
-        "cost_usd": result["cost_usd"],
-        "tokens_used": result["tokens_used"],
-    }
-
-
-@app.task(timeout_seconds=90, retry=Retry(max_retries=2, wait_duration_ms=1000))
-@with_trace_context
-@flush_on_exit
-async def check_accuracy_task(
-    ctx: TaskContext,
-    answer: str,
-    claims_json: list[dict],
-    trace_context: dict[str, str] | None = None,
-) -> dict:
-    """Subtask: technical-accuracy check (Claude)."""
-    await _ensure_ready()
-    verified_claims = claims_from_json(claims_json)
-    # Returns plain JSON-serializable dict (scores, errors, corrections, cost).
-    return await check_accuracy(answer, verified_claims)
-
-
-async def _rate_quality(rater, question: str, answer: str, doc_count: int) -> dict:
-    """Shared body for the two rater subtasks: run one judge, return its
-    EvaluationResult + cost. The raters only use the document *count*."""
-    await _ensure_ready()
-    result = await rater(question, answer, doc_count)
-    evaluation = build_evaluation_result(result["output"], result["model"])
-    return {
-        "evaluation": evaluation.model_dump(mode="json"),
-        "cost_usd": result["cost_usd"],
-        "tokens_used": result["input_tokens"] + result["output_tokens"],
-    }
-
-
-@app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
-@with_trace_context
-@flush_on_exit
-async def rate_quality_openai_task(
-    ctx: TaskContext,
-    question: str,
-    answer: str,
-    doc_count: int,
-    trace_context: dict[str, str] | None = None,
-) -> dict:
-    """Subtask: OpenAI quality judge (runs on its own instance, parallel to Claude judge)."""
-    return await _rate_quality(evaluate_with_openai, question, answer, doc_count)
-
-
-@app.task(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
-@with_trace_context
-@flush_on_exit
-async def rate_quality_anthropic_task(
-    ctx: TaskContext,
-    question: str,
-    answer: str,
-    doc_count: int,
-    trace_context: dict[str, str] | None = None,
-) -> dict:
-    """Subtask: Claude quality judge (runs on its own instance, parallel to OpenAI judge)."""
-    return await _rate_quality(evaluate_with_anthropic, question, answer, doc_count)
-
-
-# ---------------------------------------------------------------------------
 # Q&A pipeline — orchestrator
 # ---------------------------------------------------------------------------
 
-@app.task(timeout_seconds=600)
+# This decorator activates the task context for every RenderWorkflows agent on `app`.
+@answer_workflows.task(timeout_seconds=600)
 @flush_on_exit
 async def run_qa_pipeline(
     ctx: TaskContext,
@@ -282,16 +127,17 @@ async def run_qa_pipeline(
     """Orchestrate the Q&A pipeline as one workflow run.
 
     Retrieval (embedding + RAG) runs in-process. The answer is then generated and
-    put through three distinct verification capabilities, each demonstrating a
-    different Workflows pattern:
+    put through three verification stages:
 
-      • Generate  — the expensive Claude call, isolated as a retried subtask.
-      • Grounding — extract claims, then verify them against the retrieved sources
-                    (a dependent two-subtask chain).
+      • Generate  — the expensive Claude call.
+      • Grounding — extract claims, then verify them against the retrieved sources.
       • Accuracy + Quality — a factual-correctness review (Accuracy) and a
-                    dual-model developer-experience rating (Quality) fanned out to
-                    three parallel subtasks; Quality's two judges also give a
-                    cross-provider agreement signal.
+                    dual-model developer-experience rating (Quality) run in
+                    parallel; Quality's two judges also give a cross-provider
+                    agreement signal.
+
+    Generation, claims extraction, accuracy, and both judges send each model
+    request to a chained task run. Claim verification runs in this process.
 
     The pipeline runs as a single linear pass and returns the ``AnswerResponse``
     as a JSON-serializable dict.
@@ -299,13 +145,6 @@ async def run_qa_pipeline(
     await _ensure_ready(db=True)
 
     async with pipeline_trace(question):
-        # Capture the qa_pipeline OTel context into a W3C carrier so each subtask
-        # (a separate Workflows instance) can re-attach it and emit its spans into
-        # this same trace. Without this, subtask spans start their own traces and
-        # the single stored trace_id only ever contains the in-process spans.
-        trace_carrier: dict[str, str] = {}
-        inject(trace_carrier)
-
         # Save the trace ID with the progress token, so the caller can open
         # this run's logs through GET /ask/{run_id}/logs (demo mode saves no
         # session to read the trace ID from).
@@ -381,14 +220,9 @@ async def run_qa_pipeline(
         # Single linear pass: generate, ground (claims → verify), then review
         # accuracy + quality. Progress advances across a fixed 28%–95% band.
 
-        # --- Generate phase: the expensive Claude call as a retried subtask ---
+        # --- Generate phase: the expensive Claude call ---
         await emit("generation", "started", "Generating answer...", 28, total_cost)
-        gen_result = await ctx.run(
-            generate_answer_task,
-            question=question,
-            documents_json=documents_to_json(documents),
-            trace_context=trace_carrier,
-        )
+        gen_result = await generate_answer(question, documents)
         stages.append(_stage_result(
             "answer_generation",
             cost_usd=gen_result["cost_usd"],
@@ -401,11 +235,9 @@ async def run_qa_pipeline(
         await emit("generation", "completed", "Answer generated", 37, total_cost)
 
         # --- Grounding phase: extract claims, then verify them against sources ---
-        # Claims extraction (own retried task)
+        # Claims extraction
         await emit("claims", "started", "Extracting factual claims...", 43, total_cost)
-        claims_result = await ctx.run(
-            extract_claims_task, answer=answer_text, trace_context=trace_carrier
-        )
+        claims_result = await extract_claims(answer_text)
         stages.append(_stage_result(
             "claims_extraction",
             cost_usd=claims_result["cost_usd"],
@@ -419,14 +251,11 @@ async def run_qa_pipeline(
             f"Extracted {len(claims_result['claims'])} claims", 49, total_cost,
         )
 
-        # Claims verification (own task; per-claim gather stays in-process inside it)
+        # Claims verification runs in this process. A chained run per claim would
+        # add one instance start for each claim.
         await emit("verification", "started", "Verifying claims...", 55, total_cost)
-        verification_result = await ctx.run(
-            verify_claims_task,
-            claims=claims_result["claims"],
-            trace_context=trace_carrier,
-        )
-        verified_claims = claims_from_json(verification_result["verified_claims"])
+        verification_result = await verify_claims(claims_result["claims"])
+        verified_claims = verification_result["verified_claims"]
         verification_rate = verification_result["verification_rate"] * 100
         verified_count = len([c for c in verified_claims if c.verified])
         stages.append(_stage_result(
@@ -446,48 +275,32 @@ async def run_qa_pipeline(
             f"{verification_rate:.0f}% claims verified", 61, total_cost,
         )
 
-        # --- Accuracy + Quality phase: fan out to three parallel subtasks ---
+        # --- Accuracy + Quality phase: three model requests in parallel ---
         # Accuracy (factual-grounding review) and the two Quality judges
-        # (developer-experience rating) have no mutual dependency, so they run on
-        # three parallel instances. The average score and inter-judge agreement
-        # are combined here (the judges already ran through build_evaluation_result).
+        # (developer-experience rating) have no mutual dependency, so their model
+        # requests run as three chained runs at the same time.
         await emit(
             "accuracy", "started",
             "Checking accuracy & quality in parallel...", 67, total_cost,
         )
         stage_start = time.time()
         accuracy_result, openai_rate, anthropic_rate = await asyncio.gather(
-            ctx.run(
-                check_accuracy_task,
-                answer=answer_text,
-                claims_json=claims_to_json(verified_claims),
-                trace_context=trace_carrier,
-            ),
-            ctx.run(
-                rate_quality_openai_task,
-                question=question,
-                answer=answer_text,
-                doc_count=len(documents),
-                trace_context=trace_carrier,
-            ),
-            ctx.run(
-                rate_quality_anthropic_task,
-                question=question,
-                answer=answer_text,
-                doc_count=len(documents),
-                trace_context=trace_carrier,
-            ),
+            check_accuracy(answer_text, verified_claims),
+            evaluate_with_openai(question, answer_text, len(documents)),
+            evaluate_with_anthropic(question, answer_text, len(documents)),
         )
         parallel_duration = (time.time() - stage_start) * 1000
 
         accuracy_score = accuracy_result["accuracy_score"]
-        openai_eval = EvaluationResult.model_validate(openai_rate["evaluation"])
-        anthropic_eval = EvaluationResult.model_validate(anthropic_rate["evaluation"])
+        openai_eval = build_evaluation_result(openai_rate["output"], openai_rate["model"])
+        anthropic_eval = build_evaluation_result(anthropic_rate["output"], anthropic_rate["model"])
         evaluations = [openai_eval, anthropic_eval]
         average_score = (openai_eval.score + anthropic_eval.score) / 2
         agreement = agreement_level(abs(openai_eval.score - anthropic_eval.score))
         eval_cost = openai_rate["cost_usd"] + anthropic_rate["cost_usd"]
-        eval_tokens = openai_rate["tokens_used"] + anthropic_rate["tokens_used"]
+        eval_tokens = sum(
+            rate["input_tokens"] + rate["output_tokens"] for rate in (openai_rate, anthropic_rate)
+        )
         stages.append(_stage_result(
             "technical_accuracy",
             duration_ms=parallel_duration,

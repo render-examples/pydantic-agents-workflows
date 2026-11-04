@@ -2,10 +2,12 @@
 
 from typing import List
 
+from render import Retry
+
 from backend.config import settings, PipelineConfig
 from backend.models import Document
 from backend.observability import instrument_stage, calculate_anthropic_cost, usage_and_cost
-from backend.pipeline._agents import anthropic_agent
+from backend.pipeline._agents import anthropic_agent, model_request_workflows
 import logfire
 
 
@@ -18,7 +20,16 @@ Grounding rules:
 - Keep distinct product types separate. Workspace plans (e.g. Hobby, Professional) are not the same as database/datastore instance types (e.g. Free, Basic, Pro). A "database" or "datastore" question covers both Postgres and Key Value; only attribute a feature to a product when the context shows that product supports it.
 - Don't fabricate tables, lists, or specifications — only structure information that is explicitly in the context."""
 
-_answer_agent = anthropic_agent(settings.answer_model, ANSWER_GENERATION_INSTRUCTIONS)
+answer_workflows = model_request_workflows(
+    timeout_seconds=120,
+    retry=Retry(max_retries=3, wait_duration_ms=2000, backoff_scaling=2.0),
+)
+_answer_agent = anthropic_agent(
+    "answer",
+    settings.answer_model,
+    ANSWER_GENERATION_INSTRUCTIONS,
+    capabilities=[answer_workflows],
+)
 
 
 @instrument_stage(PipelineConfig.STAGE_GENERATION)

@@ -2,10 +2,12 @@
 
 from typing import List
 
+from render import Retry
+
 from backend.config import settings, PipelineConfig
 from backend.models import ClaimsOutput
 from backend.observability import instrument_stage, calculate_openai_cost, usage_and_cost
-from backend.pipeline._agents import openai_agent
+from backend.pipeline._agents import model_request_workflows, openai_agent
 import logfire
 
 
@@ -33,7 +35,13 @@ Return a JSON object with a "claims" array of claim strings."""
 
 
 _claims_agent = openai_agent(
-    settings.claims_model, CLAIMS_EXTRACTION_INSTRUCTIONS, output_type=ClaimsOutput
+    "claims",
+    settings.claims_model,
+    CLAIMS_EXTRACTION_INSTRUCTIONS,
+    output_type=ClaimsOutput,
+    capabilities=[
+        model_request_workflows(timeout_seconds=60, retry=Retry(max_retries=2, wait_duration_ms=1000))
+    ],
 )
 
 

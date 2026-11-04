@@ -66,17 +66,17 @@ The API also reads Postgres directly. The pipeline writes stage updates to Postg
 
 ### Pipeline stages
 
-`run_qa_pipeline` runs seven stages. The cheap stages run inside the orchestrator task. The LLM stages run as subtasks, so each one can retry on its own.
+`run_qa_pipeline` runs seven stages, and it calls every stage function inside the orchestrator process. Stages 3, 4, 6, and 7 use agents with the `RenderWorkflows` capability from [Pydantic AI Harness](https://github.com/pydantic/pydantic-ai/blob/main/docs/harness/render-workflows.md). Each model request from those agents runs as a chained task run, such as `answer__model.request`, so each request can retry on its own. Other failures, such as invalid structured output or an error in claim verification, fail the orchestrator task, which then runs again from the start.
 
 | # | Stage | Default model | Runs as |
 |---|-------|---------------|---------|
 | 1 | Question embedding | `text-embedding-3-small` | orchestrator |
 | 2 | Hybrid retrieval with query expansion | `gpt-5.4-nano` | orchestrator |
-| 3 | Answer generation | `claude-sonnet-5-5` | subtask, 3 retries |
-| 4 | Claims extraction | `gpt-5.4-mini` | subtask |
-| 5 | Claims verification | `text-embedding-3-small` | subtask |
-| 6 | Accuracy check | `claude-sonnet-5-5` | subtask, parallel with 7 |
-| 7 | Quality rating | `gpt-5.4-mini` and `claude-sonnet-5-5` | 2 subtasks, parallel with 6 |
+| 3 | Answer generation | `claude-sonnet-5-5` | chained model request, 3 retries |
+| 4 | Claims extraction | `gpt-5.4-mini` | chained model request |
+| 5 | Claims verification | `text-embedding-3-small` | orchestrator |
+| 6 | Accuracy check | `claude-sonnet-5-5` | chained model request, parallel with 7 |
+| 7 | Quality rating | `gpt-5.4-mini` and `claude-sonnet-5-5` | 2 chained model requests, parallel with 6 |
 
 You can change each model in the `pydantic-agents-workflows-pipeline` env group. See [`workflows/app.py`](./workflows/app.py).
 
