@@ -47,8 +47,8 @@ Only the frontend and the API are public. The API starts Render Workflows runs t
                       └─────────────────────┬──────────────────────┘
                                             │ HTTPS
                       ┌─────────────────────▼──────────────────────┐
-                      │  api  (FastAPI · public web service)       │──► Key Value
-                      │  POST /ask  ·  GET /ask/{run_id}           │    (demo limits)
+                      │  api  (FastAPI · public web service)       │
+                      │  POST /ask  ·  GET /ask/{run_id}           │
                       └─────────────────────┬──────────────────────┘
                                             │ Render SDK
                       ┌─────────────────────▼──────────────────────┐
@@ -115,7 +115,7 @@ Ingestion runs the same way. `ingest_all` runs `ingest_core`, then runs one `ing
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/), which installs Python 3.13
 - Node.js 20.9 or later
-- Docker, for the local Postgres and Key Value
+- Docker, for the local Postgres database
 - The [Render CLI](https://render.com/docs/cli), for the local workflow server
 - An OpenAI API key and an Anthropic API key
 - A Logfire project in the US region. Under **Settings**, create a write token for `LOGFIRE_TOKEN` and a read token for `LOGFIRE_READ_TOKEN`.
@@ -164,8 +164,10 @@ make add-tutorials-index   # render.com/tutorials index
 ### Run the tests
 
 ```bash
-uv run pytest
+make test
 ```
+
+`make test` starts the Docker Compose database and runs `uv run pytest`. The demo limit tests need the database. If you run `uv run pytest` without `TEST_DATABASE_URL`, those tests are skipped.
 
 ## Deploy to Render
 
@@ -188,7 +190,6 @@ Render reads [`render.yaml`](./render.yaml) and creates these resources:
 | API web service | `pydantic-agents-workflows-api` |
 | Daily ingest cron job | `pydantic-agents-workflows-ingest` |
 | Frontend static site | `pydantic-agents-workflows-frontend` |
-| Key Value, free plan, used only when `DEMO=true` | `pydantic-agents-workflows-kv` |
 
 Render asks for these secrets once, at the env group level:
 
@@ -200,7 +201,7 @@ Render asks for these secrets once, at the env group level:
 | `LOGFIRE_READ_TOKEN` | Logfire read token |
 | `RENDER_API_KEY` | [Render Account Settings → API Keys](https://dashboard.render.com/settings#api-keys) |
 
-The Blueprint sets the other connection values for you: `DATABASE_URL`, `REDIS_URL`, `WORKFLOW_SLUG`, `CORS_ORIGINS`, and the frontend's `NEXT_PUBLIC_API_URL`.
+The Blueprint sets the other connection values for you: `DATABASE_URL`, `WORKFLOW_SLUG`, `CORS_ORIGINS`, and the frontend's `NEXT_PUBLIC_API_URL`.
 
 There are two [env groups](https://render.com/docs/configure-environment-variables#environment-groups):
 
@@ -245,7 +246,7 @@ When `DEMO=true`, the app changes as follows:
 | Logs tab | Uses `GET /ask/{run_id}/logs` for your own runs. Logfire keeps logs for one day. |
 | `GET /demo/status` | Returns `{"demo": true, "remaining": N}`, the number of questions the visitor has left. |
 
-The limits count questions per visitor IP address. Key Value stores the counters.
+The limits count questions per visitor IP address. Postgres stores the counters.
 
 | Env var | Default | Limit |
 |---|---|---|
@@ -253,9 +254,7 @@ The limits count questions per visitor IP address. Key Value stores the counters
 | `DEMO_MAX_QUESTIONS_PER_VISITOR` | `10` | Questions per IP address in 24 hours |
 | `DEMO_DAILY_QUESTION_LIMIT` | `200` | Questions from all visitors in 24 hours |
 
-A value of `0` turns off that limit. A missing or invalid value uses the default. Only a question that starts a run counts, so polling and logs do not use up questions. When a visitor reaches a limit, the API returns 429 and the UI shows a Deploy to Render button. If the API cannot reach Key Value, it returns 503 and does not start a run.
-
-The free Key Value plan does not persist data, so the counters reset when the instance restarts. To run demo mode locally, run `docker compose up keyvalue` and set `REDIS_URL=redis://localhost:6379` in `.env`.
+A value of `0` turns off that limit. A missing or invalid value uses the default. Only a question that starts a run counts, so polling and logs do not use up questions. When a visitor reaches a limit, the API returns 429 and the UI shows a Deploy to Render button. If the API cannot reach the database, it returns 503 and does not start a run.
 
 To stop a demo quickly, suspend the API service or set `DEMO_DAILY_QUESTION_LIMIT` to `1`.
 
@@ -266,7 +265,7 @@ To stop a demo quickly, suspend the API service or set `DEMO_DAILY_QUESTION_LIMI
 - Only the browser that started a run can poll it or open its logs. `POST /ask` returns a `progress_token`, and `GET /ask/{run_id}` returns 404 without the matching token.
 - Outside demo mode, the browser sends a random UUID in the `X-Client-Id` header, and each browser sees only its own history.
 - The API accepts browser requests only from the frontend origin in `CORS_ORIGINS`. The local default is `http://localhost:3000`.
-- Postgres and Key Value accept no connections from the public internet. To run the ingest scripts from your computer, add your IP address to the database's **Access Control** list.
+- Postgres accepts no connections from the public internet. To run the ingest scripts from your computer, add your IP address to the database's **Access Control** list.
 - Preview environments are off, so pull requests do not deploy copies that use your keys.
 
 ## Documentation

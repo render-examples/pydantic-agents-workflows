@@ -16,6 +16,18 @@ import logfire
 _SCHEMA_INIT_LOCK_KEY = 0x70796167  # "pyag"
 
 
+# Demo usage limit counters (DEMO=true). Each key contains its window number, so
+# expires_at is used only to delete old rows.
+DEMO_COUNTERS_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS demo_counters (
+        key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS demo_counters_expires_at_idx ON demo_counters (expires_at);
+"""
+
+
 class VectorStore:
     """PostgreSQL vector store with pgvector extension."""
     
@@ -189,6 +201,9 @@ class VectorStore:
                 await conn.execute(
                     "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS trace_id TEXT"
                 )
+
+                # Demo usage limit counters. See backend/demo.py.
+                await conn.execute(DEMO_COUNTERS_SCHEMA)
 
         logfire.info("Database initialized successfully")
     

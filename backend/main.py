@@ -22,8 +22,8 @@ load_dotenv()
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import asyncpg
 import logfire
-from redis.exceptions import RedisError
 
 # Importing observability configures Logfire + instrumentation at module load.
 import backend.observability  # noqa: F401
@@ -44,7 +44,7 @@ from backend.demo import (
     LimiterUnavailable,
     Limits,
     client_ip,
-    get_redis,
+    get_pool,
     get_remaining,
     release,
     reserve,
@@ -151,14 +151,14 @@ async def ask_question(request: QuestionRequest, http_request: Request):
     reservation = None
     if settings.demo:
         try:
-            reservation = await reserve(get_redis(), client_ip(http_request), Limits.from_settings())
+            reservation = await reserve(get_pool(), client_ip(http_request), Limits.from_settings())
         except LimitExceeded as e:
             return JSONResponse(
                 status_code=429,
                 headers={"Retry-After": str(e.retry_after)},
                 content={"detail": {"message": LIMIT_MESSAGE, "deploy_url": DEPLOY_URL}},
             )
-        except (LimiterUnavailable, RedisError) as e:  # Fail closed if Key Value is down.
+        except (LimiterUnavailable, asyncpg.PostgresError, OSError) as e:  # Fail closed if the database is down.
             logfire.error("Demo limiter unavailable", error=str(e), exc_info=True)
             raise _demo_unavailable()
 
@@ -187,7 +187,7 @@ async def ask_question(request: QuestionRequest, http_request: Request):
             logfire.error("Failed to trigger workflow run", error=str(e), exc_info=True)
             if reservation:
                 try:
-                    await release(get_redis(), reservation)
+                    await release(get_pool(), reservation)
                 except Exception as release_error:  # noqa: BLE001
                     logfire.error("Failed to release demo question", error=str(release_error))
             raise HTTPException(status_code=502, detail="Failed to start pipeline")
@@ -265,13 +265,13 @@ async def get_run_logs(run_id: str, progress_token: ProgressToken):
 async def demo_status(request: Request):
     """Report whether demo mode is on and how many questions the caller has left.
 
-    If Key Value is unavailable, ``remaining`` is null. Demo mode stays on, so
+    If the database is unavailable, ``remaining`` is null. Demo mode stays on, so
     the frontend still shows the demo badge and keeps history in the browser.
     """
     if not settings.demo:
         return {"demo": False}
     try:
-        remaining = await get_remaining(get_redis(), client_ip(request), Limits.from_settings())
+        remaining = await get_remaining(get_pool(), client_ip(request), Limits.from_settings())
     except Exception as e:  # noqa: BLE001 - POST /ask still fails closed
         logfire.error("Demo limiter unavailable", error=str(e), exc_info=True)
         remaining = None

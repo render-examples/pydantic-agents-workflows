@@ -98,8 +98,6 @@ class Settings(BaseSettings):
     demo_rate_limit_per_minute: int = 3
     demo_max_questions_per_visitor: int = 10
     demo_daily_question_limit: int = 200
-    # Key Value connection string for the demo limit counters.
-    redis_url: str = ""
 
     @field_validator("cors_origins", mode="before")
     @classmethod

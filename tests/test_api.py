@@ -3,10 +3,9 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import asyncpg
 import httpx
 import pytest
-from fakeredis import FakeAsyncRedis
-from redis.exceptions import ConnectionError as RedisConnectionError
 from render.client.errors import RenderError
 
 from backend import main
@@ -74,14 +73,8 @@ def store(monkeypatch):
 
 
 @pytest.fixture
-def redis(monkeypatch):
-    r = FakeAsyncRedis()
-    monkeypatch.setattr(main, "get_redis", lambda: r)
-    return r
-
-
-@pytest.fixture
-def demo(monkeypatch, redis):
+def demo(monkeypatch, pool):
+    monkeypatch.setattr(main, "get_pool", lambda: pool)
     monkeypatch.setattr(settings, "demo", True)
     monkeypatch.setattr(settings, "demo_rate_limit_per_minute", 0)
     monkeypatch.setattr(settings, "demo_max_questions_per_visitor", 2)
@@ -258,19 +251,19 @@ async def test_demo_network_failure_gives_question_back(client, workflows, store
     assert (await client.get("/demo/status")).json()["remaining"] == 2
 
 
-async def test_demo_without_key_value_returns_503(client, workflows, store, demo, monkeypatch):
+async def test_demo_without_database_returns_503(client, workflows, store, demo, monkeypatch):
     def broken():
         raise LimiterUnavailable()
 
-    monkeypatch.setattr(main, "get_redis", broken)
+    monkeypatch.setattr(main, "get_pool", broken)
     r = await client.post("/ask", json=QUESTION)
     assert r.status_code == 503
     assert workflows.started == []
 
 
-async def test_demo_key_value_error_returns_503(client, workflows, store, demo, monkeypatch):
+async def test_demo_database_error_returns_503(client, workflows, store, demo, monkeypatch):
     async def broken(*args, **kwargs):
-        raise RedisConnectionError("connection refused")
+        raise asyncpg.PostgresConnectionError("connection refused")
 
     monkeypatch.setattr(main, "reserve", broken)
     r = await client.post("/ask", json=QUESTION)
@@ -278,11 +271,11 @@ async def test_demo_key_value_error_returns_503(client, workflows, store, demo, 
     assert workflows.started == []
 
 
-async def test_demo_status_without_key_value_stays_on(client, demo, monkeypatch):
+async def test_demo_status_without_database_stays_on(client, demo, monkeypatch):
     def broken():
         raise LimiterUnavailable()
 
-    monkeypatch.setattr(main, "get_redis", broken)
+    monkeypatch.setattr(main, "get_pool", broken)
     r = await client.get("/demo/status")
     assert r.status_code == 200
     assert r.json() == {"demo": True, "remaining": None}

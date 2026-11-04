@@ -93,15 +93,6 @@ projects:
 
         # Services in the production environment
         services:
-          # Key Value instance for the demo usage limit counters. The API
-          # connects to it only when DEMO is "true".
-          - type: keyvalue
-            name: pydantic-agents-workflows-kv
-            plan: free
-            region: oregon
-            maxmemoryPolicy: noeviction
-            ipAllowList: []
-
           # Render Workflows service. Runs the Q&A pipeline and ingestion
           # tasks. The gateway and the ingest cron start runs on it.
           - type: workflow
@@ -149,12 +140,6 @@ projects:
               - key: DATABASE_URL
                 fromDatabase:
                   name: pydantic-agents-workflows-db
-                  property: connectionString
-              # Demo usage limit counters
-              - key: REDIS_URL
-                fromService:
-                  name: pydantic-agents-workflows-kv
-                  type: keyvalue
                   property: connectionString
               # Allow browser requests only from the frontend. Render gives a
               # bare host, and backend/config.py adds https://.
