@@ -12,7 +12,8 @@ from backend.observability import (
     calculate_anthropic_cost,
     usage_and_cost,
 )
-from backend.pipeline._agents import anthropic_agent, model_request_workflows, openai_agent
+from backend.pipeline._agents import anthropic_agent, openai_agent
+from backend.workflows_app import model_request_workflows
 
 
 EVALUATION_INSTRUCTIONS = """You are a quality evaluator for technical documentation answers.

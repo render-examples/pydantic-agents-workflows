@@ -84,7 +84,7 @@ _DOC = Document(content="Web services listen on PORT.", source="https://render.c
 async def test_heavy_stage_sends_model_request_to_chained_run(monkeypatch, agent, run, task_name):
     _stub_model(monkeypatch, agent)
     ctx = FakeTaskContext()
-    with generation.answer_workflows.activate(ctx):
+    with wf.pipeline_workflows.activate(ctx):
         result = await run()
     assert ctx.calls == [task_name]
     assert result["input_tokens"] > 0
@@ -94,7 +94,7 @@ async def test_heavy_stage_sends_model_request_to_chained_run(monkeypatch, agent
 async def test_query_expansion_runs_inline_in_task(monkeypatch):
     _stub_model(monkeypatch, query_expansion._query_expansion_agent)
     ctx = FakeTaskContext()
-    with generation.answer_workflows.activate(ctx):
+    with wf.pipeline_workflows.activate(ctx):
         await query_expansion.expand_query("Q?")
     assert ctx.calls == []
 
@@ -103,7 +103,7 @@ async def test_run_qa_pipeline_activates_task_context_and_builds_response(monkey
     in_task = {}
 
     async def generate_answer(question, documents):
-        in_task["generate"] = generation.answer_workflows.in_durable_context
+        in_task["generate"] = wf.pipeline_workflows.in_durable_context
         return {"answer": "Use PORT.", "input_tokens": 10, "output_tokens": 5, "cost_usd": 0.01}
 
     async def evaluate(question, answer, doc_count):

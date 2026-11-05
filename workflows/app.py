@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import logfire
 from opentelemetry import trace
+from pydantic_ai_harness import RenderWorkflows
 from render import Retry, TaskContext
 
 # Importing observability configures Logfire at module load (same as the web app).
@@ -47,15 +48,19 @@ from backend.pipeline import (
     retrieve_documents,
     verify_claims,
 )
-from backend.pipeline._agents import app
 from backend.pipeline.evaluation import (
     agreement_level,
     build_evaluation_result,
     evaluate_with_anthropic,
     evaluate_with_openai,
 )
-from backend.pipeline.generation import answer_workflows
+from backend.workflows_app import app
 from data.sources import SOURCES
+
+# The entry task uses this instance to start the task context. The context
+# belongs to `app`, so model requests of every agent with a RenderWorkflows
+# capability on `app` run as chained task runs.
+pipeline_workflows = RenderWorkflows(app)
 
 
 def flush_on_exit(fn):
@@ -114,8 +119,7 @@ def _stage_result(
 # Q&A pipeline — orchestrator
 # ---------------------------------------------------------------------------
 
-# This decorator activates the task context for every RenderWorkflows agent on `app`.
-@answer_workflows.task(timeout_seconds=600)
+@pipeline_workflows.task(timeout_seconds=600)
 @flush_on_exit
 async def run_qa_pipeline(
     ctx: TaskContext,

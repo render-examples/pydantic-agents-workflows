@@ -10,7 +10,8 @@ from typing import List
 from backend.config import settings, PipelineConfig
 from backend.models import Claim, AccuracyOutput
 from backend.observability import instrument_stage, calculate_anthropic_cost, usage_and_cost
-from backend.pipeline._agents import anthropic_agent, model_request_workflows
+from backend.pipeline._agents import anthropic_agent
+from backend.workflows_app import model_request_workflows
 import logfire
 
 
