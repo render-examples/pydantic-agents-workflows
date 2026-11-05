@@ -89,8 +89,7 @@ class Settings(BaseSettings):
     environment: str = "production"
     
     # CORS. Origins the browser may call the API from. Accepts a JSON list or a
-    # comma-separated string. A bare host (as Render's `fromService` gives) gets
-    # an `https://` prefix.
+    # comma-separated string. A bare host gets an `https://` prefix.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
     # Public demo mode. Off by default; see the README "Demo mode" section.

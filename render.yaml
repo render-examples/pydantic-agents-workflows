@@ -141,13 +141,11 @@ projects:
                 fromDatabase:
                   name: pydantic-agents-workflows-db
                   property: connectionString
-              # Allow browser requests only from the frontend. Render gives a
-              # bare host, and backend/config.py adds https://.
+              # Allow browser requests only from the frontend. A Blueprint
+              # cannot read a static site's public URL, so set this to the
+              # frontend URL after the first deploy. See the README.
               - key: CORS_ORIGINS
-                fromService:
-                  name: pydantic-agents-workflows-frontend
-                  type: web
-                  property: host
+                sync: false
 
           # Ingestion refresh cron — triggers the Workflow's `ingest_all`
           # fan-out on a schedule (Workflows have no built-in scheduling).
@@ -191,7 +189,7 @@ projects:
               # at build time before this static site builds — so NEXT_PUBLIC_API_URL
               # is baked into the bundle with the real, suffix-included URL (no
               # manual post-deploy step, no guessing the -XXXX suffix). The API
-              # reads this site's host for CORS_ORIGINS in the other direction.
+              # needs this site's URL in CORS_ORIGINS, which you set by hand.
               - key: NEXT_PUBLIC_API_URL
                 fromService:
                   name: pydantic-agents-workflows-api
