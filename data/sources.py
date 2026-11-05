@@ -29,8 +29,8 @@ from bs4 import BeautifulSoup
 # crawl_tutorials / chunking live in data/scripts, so put that directory on the
 # path before importing from them.
 sys.path.insert(0, str(Path(__file__).parent / "scripts"))
-from chunking import chunk_document, chunk_markdown_by_heading  # noqa: E402
-from crawl_tutorials import fetch_tutorial_index  # noqa: E402
+from chunking import chunk_document, chunk_markdown_by_heading
+from crawl_tutorials import fetch_tutorial_index
 
 Doc = dict[str, Any]
 

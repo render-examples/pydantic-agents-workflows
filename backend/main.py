@@ -181,7 +181,7 @@ async def ask_question(request: QuestionRequest, http_request: Request):
             )
             # Without this row the caller cannot poll the run, so treat it as a failed start.
             await vector_store.record_run(progress_token, task_run.id)
-        except Exception as e:  # noqa: BLE001 - the caller gets no usable run
+        except Exception as e:  # The caller gets no usable run.
             logfire.error("Failed to trigger workflow run", error=str(e), exc_info=True)
             if reservation:
                 try:

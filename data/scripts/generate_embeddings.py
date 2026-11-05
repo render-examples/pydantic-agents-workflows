@@ -802,7 +802,7 @@ async def test_database_connection():
         print(f"   {e}")
         print("   Make sure PostgreSQL is running: docker-compose ps")
         return False
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Report any other failure and stop.
         print("\n❌ ERROR: Database connection failed")
         print(f"   {e}")
         return False
@@ -830,7 +830,7 @@ async def main():
     
     try:
         docs = await fetch_render_docs()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Fall back to the sample docs on any failure.
         print(f"\n⚠️  Error fetching documentation: {e}")
         print("Falling back to sample documentation...")
         docs = await fetch_render_docs_sample()
@@ -841,7 +841,7 @@ async def main():
         tutorial_docs = await fetch_tutorial_docs()
         docs.extend(tutorial_docs)
         print(f"➕ Added {len(tutorial_docs)} tutorial chunks")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Continue without tutorials on any failure.
         print(f"\n⚠️  Error crawling tutorials: {e}")
         print("Continuing without tutorial content...")
 

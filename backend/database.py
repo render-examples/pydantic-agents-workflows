@@ -1,7 +1,6 @@
 """Database connection and pgvector operations."""
 
 import json
-from contextlib import asynccontextmanager
 
 import asyncpg
 import logfire
@@ -773,9 +772,4 @@ class VectorStore:
 # Global vector store instance
 vector_store = VectorStore()
 
-
-@asynccontextmanager
-async def get_vector_store():
-    """Get the vector store instance."""
-    yield vector_store
 

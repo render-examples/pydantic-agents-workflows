@@ -59,7 +59,6 @@ EVAL_MODEL_ANTHROPIC=claude-sonnet-5-5  # Anthropic evaluator model
 
 # Performance Settings
 TIMEOUT_SECONDS=30                       # Per-stage timeout
-ENABLE_CACHING=true                      # Cache embeddings
 LOG_LEVEL=INFO                           # Logging verbosity (DEBUG, INFO, WARNING, ERROR)
 
 # Frontend Settings (for deployment)
@@ -261,10 +260,6 @@ ACCURACY_MODEL = "gpt-5.4-mini"
 
 # Reduce token limits
 MAX_TOKENS = 1000
-
-# Enable aggressive caching
-ENABLE_CACHING = True
-CACHE_TTL_SECONDS = 3600  # 1 hour
 ```
 
 ### Quality Optimization

@@ -53,8 +53,6 @@ envVarGroups:
       - key: QUERY_EXPANSION_MODEL
         value: gpt-5.4-nano
       # Performance
-      - key: ENABLE_CACHING
-        value: "true"
       - key: LOG_LEVEL
         value: INFO
       # Public demo mode. Keep "false" for a normal deploy. See the README

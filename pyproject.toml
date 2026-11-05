@@ -48,7 +48,7 @@ dev = [
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "BLE"]
 
 [tool.ruff.lint.per-file-ignores]
 # load_dotenv() must run before the app imports read the environment.

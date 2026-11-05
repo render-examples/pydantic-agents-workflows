@@ -81,7 +81,6 @@ class Settings(BaseSettings):
     query_expansion_model: str = "gpt-5.4-nano"
     
     # Performance
-    enable_caching: bool = True
     log_level: str = "INFO"
     # Deployment environment tag sent to Logfire (traces are grouped by it).
     # Defaults to "production"; set ENVIRONMENT=development locally so dev traces

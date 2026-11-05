@@ -76,7 +76,7 @@ class QuestionRequest(BaseModel):
     def sanitize_question(cls, v: str) -> str:
         if not isinstance(v, str):
             # Pydantic converts only ValueError and AssertionError to a validation error.
-            raise ValueError("question must be a string")  # noqa: TRY004
+            raise ValueError("question must be a string")
         # Strip null bytes and non-printable control characters (keep \n \t \r)
         v = re.sub(r'[\x00\x01-\x08\x0B\x0C\x0E-\x1F\x7F]', '', v)
         # Decode HTML entities before stripping tags to prevent bypass via &lt;script&gt;
@@ -150,16 +150,6 @@ class AnswerResponse(BaseModel):
     session_id: str | None = Field(None, description="Session ID if provided")
 
 
-class ProgressUpdate(BaseModel):
-    """Server-sent event for progress tracking."""
-    
-    stage: str = Field(..., description="Current stage name")
-    status: str = Field(..., description="Status: 'started', 'completed', 'failed'")
-    message: str = Field(..., description="Human-readable message")
-    progress: float = Field(..., ge=0, le=100, description="Overall progress percentage")
-    cost_so_far: float = Field(0.0, description="Accumulated cost")
-    duration_ms: float | None = Field(None, description="Stage duration if completed")
-
 
 class HealthCheck(BaseModel):
     """Health check response."""
@@ -168,31 +158,3 @@ class HealthCheck(BaseModel):
     database_connected: bool = Field(..., description="Database connection status")
     logfire_enabled: bool = Field(..., description="Logfire instrumentation status")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
-class DocumentChunk(BaseModel):
-    """A chunk of documentation for ingestion."""
-    
-    content: str = Field(..., description="The chunk content")
-    source: str = Field(..., description="Source URL")
-    title: str = Field(..., description="Document title")
-    section: str | None = Field(None, description="Section within the document")
-    metadata: dict = Field(default_factory=dict, description="Additional metadata")
-
-
-class IngestionRequest(BaseModel):
-    """Request to ingest documentation."""
-    
-    chunks: list[DocumentChunk] = Field(..., description="Document chunks to ingest")
-    batch_size: int = Field(100, ge=1, le=1000, description="Batch size for processing")
-
-
-class IngestionResponse(BaseModel):
-    """Response from document ingestion."""
-    
-    success: bool = Field(..., description="Whether ingestion succeeded")
-    chunks_processed: int = Field(..., description="Number of chunks processed")
-    duration_ms: float = Field(..., description="Processing duration")
-    cost_usd: float = Field(..., description="Total cost")
-    errors: list[str] = Field(default_factory=list, description="Any errors encountered")
-
