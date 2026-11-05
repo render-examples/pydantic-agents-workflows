@@ -54,18 +54,16 @@ def run_burst(monkeypatch, pool):
 
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            responses = await asyncio.gather(*(
-                client.post("/ask", json=QUESTION, headers={"CF-Connecting-IP": ip}) for ip in ips
-            ))
+            responses = await asyncio.gather(
+                *(client.post("/ask", json=QUESTION, headers={"CF-Connecting-IP": ip}) for ip in ips)
+            )
         return Counter(r.status_code for r in responses), responses, workflows
 
     return run
 
 
 async def _count(pool, key_part: str) -> int:
-    return await pool.fetchval(
-        "SELECT COALESCE(SUM(count), 0) FROM demo_counters WHERE key LIKE $1", f"%{key_part}%"
-    )
+    return await pool.fetchval("SELECT COALESCE(SUM(count), 0) FROM demo_counters WHERE key LIKE $1", f"%{key_part}%")
 
 
 async def test_one_visitor_burst_gets_only_the_per_minute_limit(run_burst, pool):
@@ -87,7 +85,7 @@ async def test_one_visitor_burst_does_not_block_other_visitors(run_burst):
     # Send one request from another visitor after every 20 attacker requests.
     ips = [ip for i in range(20) for ip in [attacker] * 20 + [f"198.51.100.{i}"]]
     _, responses, _ = await run_burst(ips, per_minute=3, per_visitor=10, daily=200)
-    others = [r.status_code for ip, r in zip(ips, responses) if ip != attacker]
+    others = [r.status_code for ip, r in zip(ips, responses, strict=True) if ip != attacker]
     assert others == [202] * 20
 
 

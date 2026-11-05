@@ -26,38 +26,63 @@ PRICING_SOURCE = "https://render.com/pricing"
 
 # Pricing keywords that trigger explicit pricing table injection
 PRICING_KEYWORDS = [
-    'pricing', 'price', 'cost', 'costs', 'plan', 'plans', 'tier', 'tiers',
-    'instance type', 'instance types', '$', 'dollar', 'monthly', 'per month',
-    'how much', 'what does it cost'
+    "pricing",
+    "price",
+    "cost",
+    "costs",
+    "plan",
+    "plans",
+    "tier",
+    "tiers",
+    "instance type",
+    "instance types",
+    "$",
+    "dollar",
+    "monthly",
+    "per month",
+    "how much",
+    "what does it cost",
 ]
 
 PRODUCT_KEYWORDS = {
-    'postgres': ['Render Postgres Pricing'],
-    'postgresql': ['Render Postgres Pricing'],
-    'database': ['Render Postgres Pricing', 'Render Key Value Pricing'],
-    'datastore': ['Render Postgres Pricing', 'Render Key Value Pricing'],
-    'key value': ['Render Key Value Pricing'],
-    'keyvalue': ['Render Key Value Pricing'],
-    'redis': ['Render Key Value Pricing'],
-    'valkey': ['Render Key Value Pricing'],
-    'web service': ['Render Web Services Pricing'],
-    'private service': ['Render Web Services Pricing'],
-    'background worker': ['Render Web Services Pricing'],
-    'cron': ['Render Cron Jobs Pricing'],
-    'cron job': ['Render Cron Jobs Pricing'],
+    "postgres": ["Render Postgres Pricing"],
+    "postgresql": ["Render Postgres Pricing"],
+    "database": ["Render Postgres Pricing", "Render Key Value Pricing"],
+    "datastore": ["Render Postgres Pricing", "Render Key Value Pricing"],
+    "key value": ["Render Key Value Pricing"],
+    "keyvalue": ["Render Key Value Pricing"],
+    "redis": ["Render Key Value Pricing"],
+    "valkey": ["Render Key Value Pricing"],
+    "web service": ["Render Web Services Pricing"],
+    "private service": ["Render Web Services Pricing"],
+    "background worker": ["Render Web Services Pricing"],
+    "cron": ["Render Cron Jobs Pricing"],
+    "cron job": ["Render Cron Jobs Pricing"],
 }
 
 # AI/agent keywords that trigger the Render Workflows agents tutorial injection
 AI_AGENT_KEYWORDS = [
-    'ai agent', 'ai agents', 'llm agent', 'llm', 'language model',
-    'artificial intelligence', 'machine learning', 'deploy ai', 'deploy agent',
-    'long-running', 'long running', 'self-orchestrating', 'render workflows',
-    'agent workflow', 'agent deployment', 'agentic',
+    "ai agent",
+    "ai agents",
+    "llm agent",
+    "llm",
+    "language model",
+    "artificial intelligence",
+    "machine learning",
+    "deploy ai",
+    "deploy agent",
+    "long-running",
+    "long running",
+    "self-orchestrating",
+    "render workflows",
+    "agent workflow",
+    "agent deployment",
+    "agentic",
 ]
 
 # Single-word AI keywords matched with word boundaries to avoid false positives.
 # 'ai' is matched with word boundaries so it triggers on "ai" but not "email"/"detail".
-AI_AGENT_SINGLE_WORD_KEYWORDS = ['agent', 'agents', 'ai']
+AI_AGENT_SINGLE_WORD_KEYWORDS = ["agent", "agents", "ai"]
 
 # Two authoritative AI/agent sources are injected together:
 #   1. the Workflows agents tutorial, and
@@ -68,25 +93,45 @@ AI_AGENT_WORKFLOWS_DOCS_SOURCE = "https://render.com/docs/workflows"
 
 # Autoscaling keywords
 AUTOSCALING_KEYWORDS = [
-    'autoscaling', 'autoscale', 'auto-scaling', 'auto scaling',
-    'horizontal scaling', 'scale automatically', 'automatically scale',
-    'scale up', 'scale down', 'min instances', 'max instances',
-    'scaling policy', 'scale based on',
+    "autoscaling",
+    "autoscale",
+    "auto-scaling",
+    "auto scaling",
+    "horizontal scaling",
+    "scale automatically",
+    "automatically scale",
+    "scale up",
+    "scale down",
+    "min instances",
+    "max instances",
+    "scaling policy",
+    "scale based on",
 ]
-AUTOSCALING_SINGLE_WORD_KEYWORDS = ['scaling']
+AUTOSCALING_SINGLE_WORD_KEYWORDS = ["scaling"]
 AUTOSCALING_DOC_SOURCE = "https://render.com/docs/scaling"
 
 # Node.js deployment keywords
 NODEJS_KEYWORDS = [
-    'node.js', 'nodejs', 'node js', 'express', 'deploy node',
-    'npm start', 'npm install', 'next.js', 'nextjs', 'deploy next',
-    'vite', 'javascript app', 'js app', 'deploy javascript',
+    "node.js",
+    "nodejs",
+    "node js",
+    "express",
+    "deploy node",
+    "npm start",
+    "npm install",
+    "next.js",
+    "nextjs",
+    "deploy next",
+    "vite",
+    "javascript app",
+    "js app",
+    "deploy javascript",
 ]
-NODEJS_SINGLE_WORD_KEYWORDS = ['node']
+NODEJS_SINGLE_WORD_KEYWORDS = ["node"]
 NODEJS_DOC_SOURCE = "https://render.com/docs/deploy-node-express-app"
 
 # Tutorials keywords that trigger the render.com/tutorials index recommendation
-TUTORIALS_KEYWORDS = ['tutorial', 'tutorials']
+TUTORIALS_KEYWORDS = ["tutorial", "tutorials"]
 TUTORIALS_INDEX_SOURCE = "https://render.com/tutorials"
 
 
@@ -104,6 +149,7 @@ TUTORIALS_INDEX_SOURCE = "https://render.com/tutorials"
 class DocLookup:
     """Identifies one curated doc to fetch — by source URL, or by title within the
     pricing page (all pricing tables share PRICING_SOURCE and differ only by title)."""
+
     source: str | None = None
     title: str | None = None
 
@@ -111,10 +157,11 @@ class DocLookup:
 @dataclass(frozen=True)
 class InjectionRule:
     """A keyword trigger → curated docs to prepend when the question matches."""
+
     name: str
-    keywords: tuple = ()           # phrase/substring keywords
-    word_keywords: tuple = ()      # single words, matched with \b word boundaries
-    lookups: tuple = ()            # DocLookup entries to fetch when matched
+    keywords: tuple = ()  # phrase/substring keywords
+    word_keywords: tuple = ()  # single words, matched with \b word boundaries
+    lookups: tuple = ()  # DocLookup entries to fetch when matched
 
 
 INJECTION_RULES = (
@@ -153,10 +200,7 @@ def _matches(question_lower: str, keywords: tuple, word_keywords: tuple) -> bool
     """True if the question contains any phrase keyword or any word-boundary keyword."""
     if any(keyword in question_lower for keyword in keywords):
         return True
-    return any(
-        re.search(r'\b' + re.escape(word) + r'\b', question_lower)
-        for word in word_keywords
-    )
+    return any(re.search(r"\b" + re.escape(word) + r"\b", question_lower) for word in word_keywords)
 
 
 def _parse_metadata(raw) -> dict:
@@ -181,7 +225,8 @@ async def _fetch_curated_docs(conn, lookup: DocLookup) -> list[Document]:
             FROM documents
             WHERE title = $1 AND source = $2
             """,
-            lookup.title, PRICING_SOURCE,
+            lookup.title,
+            PRICING_SOURCE,
         )
     else:
         rows = await conn.fetch(
@@ -195,17 +240,19 @@ async def _fetch_curated_docs(conn, lookup: DocLookup) -> list[Document]:
 
     docs: list[Document] = []
     for row in rows:
-        metadata = _parse_metadata(row['metadata'])
-        docs.append(Document(
-            content=row['content'],
-            source=row['source'],
-            metadata={
-                'title': row['title'],
-                'section': row['section'] or row['title'],
-                **metadata,
-            },
-            similarity_score=INJECTED_DOC_SCORE,
-        ))
+        metadata = _parse_metadata(row["metadata"])
+        docs.append(
+            Document(
+                content=row["content"],
+                source=row["source"],
+                metadata={
+                    "title": row["title"],
+                    "section": row["section"] or row["title"],
+                    **metadata,
+                },
+                similarity_score=INJECTED_DOC_SCORE,
+            )
+        )
     return docs
 
 
@@ -241,16 +288,16 @@ def detect_pricing_query(question: str) -> list[str]:
     if not tables_to_inject:
         # If asking about "instance types" specifically, include ALL pricing tables
         # since instance types exist for web services, databases, and cron jobs
-        if 'instance type' in question_lower:
+        if "instance type" in question_lower:
             tables_to_inject = {
-                'Render Web Services Pricing',
-                'Render Postgres Pricing',
-                'Render Key Value Pricing',
-                'Render Cron Jobs Pricing'
+                "Render Web Services Pricing",
+                "Render Postgres Pricing",
+                "Render Key Value Pricing",
+                "Render Cron Jobs Pricing",
             }
         else:
             # For other generic pricing questions, default to databases
-            tables_to_inject = {'Render Postgres Pricing', 'Render Key Value Pricing'}
+            tables_to_inject = {"Render Postgres Pricing", "Render Key Value Pricing"}
 
     return list(tables_to_inject)
 
@@ -319,22 +366,15 @@ async def inject_curated_docs(question: str, existing_docs: list[Document]) -> l
     if not lookups:
         return existing_docs
 
-    # De-dup lookups (e.g. pricing defaults could request the same table twice),
-    # preserving order.
-    seen_keys = set()
-    unique_lookups: list[DocLookup] = []
-    for lookup in lookups:
-        key = (lookup.source, lookup.title)
-        if key not in seen_keys:
-            seen_keys.add(key)
-            unique_lookups.append(lookup)
+    # Remove duplicate lookups and keep their order. For example, the pricing
+    # defaults can request the same table twice.
+    unique_lookups = list(dict.fromkeys(lookups))
 
-    # Don't re-inject content already in the retrieved set. Chunks of one curated
-    # page share a title, so dedup on (source, content) rather than (source, title).
-    existing_keys = {(doc.source, doc.content) for doc in existing_docs}
+    # Do not inject content that is already in the retrieved set or already injected.
+    # Chunks of one curated page share a title, so compare (source, content).
+    seen_keys = {(doc.source, doc.content) for doc in existing_docs}
 
     injected: list[Document] = []
-    seen_keys: set = set()
     async with vector_store.pool.acquire() as conn:
         for lookup in unique_lookups:
             docs = await _fetch_curated_docs(conn, lookup)
@@ -347,7 +387,7 @@ async def inject_curated_docs(question: str, existing_docs: list[Document]) -> l
                 continue
             for doc in docs:
                 key = (doc.source, doc.content)
-                if key in existing_keys or key in seen_keys:
+                if key in seen_keys:
                     continue
                 seen_keys.add(key)
                 injected.append(doc)
@@ -361,7 +401,7 @@ async def inject_curated_docs(question: str, existing_docs: list[Document]) -> l
     combined = injected + existing_docs
     dropped = max(0, len(combined) - settings.rag_top_k)
     if dropped:
-        combined = combined[:settings.rag_top_k]
+        combined = combined[: settings.rag_top_k]
     logfire.info(
         "Injected curated docs (replace-weakest)",
         injected=len(injected),
@@ -435,7 +475,7 @@ async def retrieve_documents(embedding: list[float], original_question: str | No
         logfire.info(
             "Using multi-query retrieval for broad question",
             question_length=len(original_question),
-            rag_top_k=settings.rag_top_k
+            rag_top_k=settings.rag_top_k,
         )
 
         # Expand query
@@ -447,11 +487,11 @@ async def retrieve_documents(embedding: list[float], original_question: str | No
             "Expanded query to multiple variations",
             num_queries=len(query_variations),
             queries=query_variations,
-            expansion_cost_usd=expansion_cost
+            expansion_cost_usd=expansion_cost,
         )
 
         # Retrieve documents for each query variation
-        all_docs = {}            # content hash -> Document (highest cosine kept)
+        all_docs = {}  # content hash -> Document (highest cosine kept)
         original_hashes = set()  # content hashes that matched the original question
 
         # Calculate how many docs to retrieve per query
@@ -465,16 +505,14 @@ async def retrieve_documents(embedding: list[float], original_question: str | No
                 query_embedding=embed_result["embedding"],
                 k=docs_per_query,
                 threshold=settings.similarity_threshold,
-                bm25_weight=0.4  # 60% semantic, 40% BM25
+                bm25_weight=0.4,  # 60% semantic, 40% BM25
             )
             return i, embed_result["cost_usd"], docs
 
-        query_results = await asyncio.gather(*[
-            _embed_and_search(i, query) for i, query in enumerate(query_variations)
-        ])
+        query_results = await asyncio.gather(*[_embed_and_search(i, query) for i, query in enumerate(query_variations)])
 
         for i, cost, docs in query_results:
-            logfire.debug(f"Retrieved {len(docs)} docs for query {i+1}/{len(query_variations)}")
+            logfire.debug(f"Retrieved {len(docs)} docs for query {i + 1}/{len(query_variations)}")
             total_cost += cost
 
             # Deduplicate across variations: keep the highest cosine similarity seen
@@ -497,13 +535,13 @@ async def retrieve_documents(embedding: list[float], original_question: str | No
             key=lambda kv: (kv[1].similarity_score, kv[0] in original_hashes),
             reverse=True,
         )
-        documents = [doc for _, doc in ranked][:settings.rag_top_k]
+        documents = [doc for _, doc in ranked][: settings.rag_top_k]
 
         logfire.info(
             "Multi-query retrieval completed",
             num_queries=len(query_variations),
             total_docs_before_dedup=len(all_docs),
-            final_docs=len(documents)
+            final_docs=len(documents),
         )
     else:
         # Single query retrieval with hybrid search (semantic + BM25)
@@ -514,7 +552,7 @@ async def retrieve_documents(embedding: list[float], original_question: str | No
             query_embedding=embedding,
             k=settings.rag_top_k,
             threshold=settings.similarity_threshold,
-            bm25_weight=0.4  # 60% semantic, 40% BM25 - favors semantic but includes keyword matches
+            bm25_weight=0.4,  # 60% semantic, 40% BM25 - favors semantic but includes keyword matches
         )
 
     # Adaptive relevance cutoff: drop the long tail of marginally-relevant docs by
@@ -537,7 +575,7 @@ async def retrieve_documents(embedding: list[float], original_question: str | No
         "Documents retrieved",
         count=len(documents),
         avg_similarity=avg_similarity,
-        top_score=documents[0].similarity_score if documents else 0.0
+        top_score=documents[0].similarity_score if documents else 0.0,
     )
 
     return {

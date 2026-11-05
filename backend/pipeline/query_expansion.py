@@ -42,8 +42,7 @@ Output: {"queries": ["What are the Postgres instance types and pricing?", "What 
 """
 
 _query_expansion_agent = openai_agent(
-    "query_expansion",
-    settings.query_expansion_model, QUERY_EXPANSION_INSTRUCTIONS, output_type=QueryExpansionOutput
+    "query_expansion", settings.query_expansion_model, QUERY_EXPANSION_INSTRUCTIONS, output_type=QueryExpansionOutput
 )
 
 
@@ -76,9 +75,7 @@ async def expand_query(question: str) -> tuple[list[str], float]:
         )
         return [question], 0.0
 
-    cost_usd = usage_and_cost(
-        result, calculate_openai_cost, settings.query_expansion_model
-    )["cost_usd"]
+    cost_usd = usage_and_cost(result, calculate_openai_cost, settings.query_expansion_model)["cost_usd"]
 
     # Limit to 2 expanded queries, then prepend original to ensure it's always included
     variations = [question] + result.output.queries[:2]
@@ -111,16 +108,23 @@ async def should_expand_query(question: str) -> bool:
 
     # Broad category questions that need expansion
     broad_terms = [
-        "database", "plan", "tier", "option", "service",
-        "storage", "backup", "monitoring", "scaling",
-        "pricing", "cost", "feature", "capability"
+        "database",
+        "plan",
+        "tier",
+        "option",
+        "service",
+        "storage",
+        "backup",
+        "monitoring",
+        "scaling",
+        "pricing",
+        "cost",
+        "feature",
+        "capability",
     ]
 
     # Very specific questions that don't need expansion
-    specific_indicators = [
-        "how do i", "how to", "error", "troubleshoot",
-        "specific", "exactly", "step by step"
-    ]
+    specific_indicators = ["how do i", "how to", "error", "troubleshoot", "specific", "exactly", "step by step"]
 
     # Check for broad terms
     has_broad_term = any(term in question_lower for term in broad_terms)

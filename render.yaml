@@ -26,8 +26,6 @@ envVarGroups:
       # Pipeline configuration
       - key: MAX_TOKENS
         value: "5000"
-      - key: TIMEOUT_SECONDS
-        value: "30"
       # RAG configuration
       - key: RAG_TOP_K
         value: "20"
@@ -53,8 +51,6 @@ envVarGroups:
       - key: QUERY_EXPANSION_MODEL
         value: gpt-5.4-nano
       # Performance
-      - key: ENABLE_CACHING
-        value: "true"
       - key: LOG_LEVEL
         value: INFO
       # Public demo mode. Keep "false" for a normal deploy. See the README

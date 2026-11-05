@@ -19,29 +19,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 import asyncpg
 import logfire
-
-# Importing observability configures Logfire + instrumentation at module load.
-import backend.observability  # noqa: F401
-
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from render import RenderAsync
 from render.client.errors import RenderError
 from render.client.types import TaskRunStatusValues
 
-from backend.config import settings
-from backend.models import QuestionRequest, HealthCheck
-from backend.database import vector_store
+# Importing observability configures Logfire + instrumentation at module load.
+import backend.observability  # noqa: F401
 from backend.api.dependencies import ClientId, require_history_enabled
 from backend.api.logs import fetch_logfire_logs
+from backend.config import settings
+from backend.database import vector_store
 from backend.demo import (
     DEPLOY_URL,
     LIMIT_MESSAGE,
-    LimitExceeded,
     LimiterUnavailable,
+    LimitExceeded,
     Limits,
     client_ip,
     get_pool,
@@ -49,6 +46,7 @@ from backend.demo import (
     release,
     reserve,
 )
+from backend.models import HealthCheck, QuestionRequest
 
 
 @lru_cache(maxsize=1)
@@ -79,7 +77,7 @@ app = FastAPI(
     title="Ask Render Anything Assistant",
     description="Production-grade AI pipeline with observable AI using Pydantic AI, Logfire, and Render",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -106,11 +104,7 @@ logfire.instrument_fastapi(app, request_attributes_mapper=_drop_endpoint_argumen
 @app.get("/", tags=["Health"])
 async def root():
     """Root endpoint."""
-    return {
-        "name": "Ask Render Anything Assistant",
-        "version": "1.0.0",
-        "status": "operational"
-    }
+    return {"name": "Ask Render Anything Assistant", "version": "1.0.0", "status": "operational"}
 
 
 @app.get("/health", response_model=HealthCheck, tags=["Health"])
@@ -120,9 +114,7 @@ async def health_check():
     db_healthy = await vector_store.health_check()
 
     return HealthCheck(
-        status="healthy" if db_healthy else "degraded",
-        database_connected=db_healthy,
-        logfire_enabled=True
+        status="healthy" if db_healthy else "degraded", database_connected=db_healthy, logfire_enabled=True
     )
 
 
@@ -160,7 +152,7 @@ async def ask_question(request: QuestionRequest, http_request: Request):
             )
         except (LimiterUnavailable, asyncpg.PostgresError, OSError) as e:  # Fail closed if the database is down.
             logfire.error("Demo limiter unavailable", error=str(e), exc_info=True)
-            raise _demo_unavailable()
+            raise _demo_unavailable() from e
 
     with logfire.span(
         "user_session.qa_request",
@@ -183,14 +175,14 @@ async def ask_question(request: QuestionRequest, http_request: Request):
             )
             # Without this row the caller cannot poll the run, so treat it as a failed start.
             await vector_store.record_run(progress_token, task_run.id)
-        except Exception as e:  # noqa: BLE001 - the caller gets no usable run
+        except Exception as e:  # The caller gets no usable run.
             logfire.error("Failed to trigger workflow run", error=str(e), exc_info=True)
             if reservation:
                 try:
                     await release(get_pool(), reservation)
                 except Exception as release_error:  # noqa: BLE001
                     logfire.error("Failed to release demo question", error=str(release_error))
-            raise HTTPException(status_code=502, detail="Failed to start pipeline")
+            raise HTTPException(status_code=502, detail="Failed to start pipeline") from e
 
         logfire.info(
             "Triggered Q&A workflow run",
@@ -224,7 +216,7 @@ async def get_answer(run_id: str, progress_token: ProgressToken):
         details = await get_render().workflows.get_task_run(run_id)
     except RenderError as e:
         logfire.error("Failed to read workflow run", run_id=run_id, error=str(e), exc_info=True)
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(status_code=404, detail="Run not found") from e
 
     status = details.status.value if hasattr(details.status, "value") else details.status
 
@@ -288,7 +280,7 @@ async def get_stats():
         "document_count": doc_count,
         "embedding_model": settings.embedding_model,
         "embedding_dimensions": settings.embedding_dimensions,
-        "rag_top_k": settings.rag_top_k
+        "rag_top_k": settings.rag_top_k,
     }
 
 
@@ -304,10 +296,7 @@ async def get_history(client_id: ClientId, limit: Annotated[int, Query(ge=1, le=
 
     sessions = await vector_store.get_recent_sessions(client_id=client_id, limit=limit)
 
-    return {
-        "sessions": sessions,
-        "count": len(sessions)
-    }
+    return {"sessions": sessions, "count": len(sessions)}
 
 
 @app.get("/history/{session_id}", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
@@ -343,11 +332,7 @@ async def delete_session(session_id: UUID, client_id: ClientId):
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return {
-        "success": True,
-        "message": "Session deleted successfully",
-        "session_id": str(session_id)
-    }
+    return {"success": True, "message": "Session deleted successfully", "session_id": str(session_id)}
 
 
 @app.delete("/history", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
@@ -363,11 +348,7 @@ async def clear_all_history(client_id: ClientId):
 
     deleted_count = await vector_store.delete_all_sessions(client_id)
 
-    return {
-        "success": True,
-        "message": f"Deleted {deleted_count} sessions",
-        "count": deleted_count
-    }
+    return {"success": True, "message": f"Deleted {deleted_count} sessions", "count": deleted_count}
 
 
 @app.get("/sessions/{session_id}/logs", tags=["Observability"], dependencies=[Depends(require_history_enabled)])
@@ -387,11 +368,11 @@ async def get_session_logs(session_id: UUID, client_id: ClientId):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    trace_id = session.get('trace_id')
+    trace_id = session.get("trace_id")
     if not trace_id:
         raise HTTPException(
             status_code=404,
-            detail="Trace ID not available for this session (may be from before trace logging was enabled)"
+            detail="Trace ID not available for this session (may be from before trace logging was enabled)",
         )
 
     return await fetch_logfire_logs(trace_id)
@@ -400,10 +381,4 @@ async def get_session_logs(session_id: UUID, client_id: ClientId):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level=settings.log_level.lower()
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level=settings.log_level.lower())

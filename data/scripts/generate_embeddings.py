@@ -2,16 +2,15 @@
 
 import asyncio
 import json
-from pathlib import Path
-from typing import List, Dict
-import httpx
-from openai import AsyncOpenAI
 import os
 import re
-from dotenv import load_dotenv
+from pathlib import Path
 
+import httpx
 from chunking import chunk_document
 from crawl_tutorials import fetch_tutorial_docs
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
 
 # Load environment variables
 load_dotenv()
@@ -20,60 +19,60 @@ load_dotenv()
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-async def fetch_render_docs() -> List[Dict]:
+async def fetch_render_docs() -> list[dict]:
     """
     Fetch actual Render documentation from llms-full.txt.
-    
+
     This fetches the full documentation provided by Render for AI consumption.
     Excludes blog posts and articles, focusing only on technical documentation.
     """
-    
+
     print("📡 Fetching documentation from https://render.com/docs/llms-full.txt...")
-    
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.get("https://render.com/docs/llms-full.txt")
         response.raise_for_status()
         content = response.text
-    
+
     print(f"✅ Fetched {len(content):,} characters of documentation")
-    
+
     # Parse the documentation into chunks
     # The llms-full.txt format has sections separated by headers
     docs = []
     excluded_count = 0
-    
+
     # Split by major sections (pages)
     # Look for lines starting with "# " (markdown h1 headers)
-    pages = re.split(r'\n(?=# [^#])', content)
-    
+    pages = re.split(r"\n(?=# [^#])", content)
+
     print(f"📄 Found {len(pages)} major sections")
-    
+
     for page in pages:
         if not page.strip():
             continue
-            
+
         # Extract title (first h1)
-        title_match = re.match(r'^# (.+?)$', page, re.MULTILINE)
+        title_match = re.match(r"^# (.+?)$", page, re.MULTILINE)
         if not title_match:
             continue
-            
+
         title = title_match.group(1).strip()
-        
+
         # Extract source URL if present (format: "Source: https://...")
-        source_match = re.search(r'^Source:\s+(https?://[^\s]+)', page, re.MULTILINE)
+        source_match = re.search(r"^Source:\s+(https?://[^\s]+)", page, re.MULTILINE)
         source_url = source_match.group(1).strip() if source_match else "https://render.com/docs"
-        
+
         # Split page into subsections by h2 headers
-        subsections = re.split(r'\n(?=## [^#])', page)
-        
-        for i, subsection in enumerate(subsections):
+        subsections = re.split(r"\n(?=## [^#])", page)
+
+        for subsection in subsections:
             if not subsection.strip():
                 continue
-            
+
             # Extract section name if this is a subsection
-            section_match = re.match(r'^## (.+?)$', subsection, re.MULTILINE)
+            section_match = re.match(r"^## (.+?)$", subsection, re.MULTILINE)
             section_name = section_match.group(1).strip() if section_match else None
-            
+
             # Clean up the content
             clean_content = subsection.strip()
 
@@ -82,29 +81,31 @@ async def fetch_render_docs() -> List[Dict]:
                 continue
 
             # Exclude blog posts and articles (focus on technical docs only)
-            if any(keyword in title.lower() for keyword in ['blog', 'article', 'changelog']):
+            if any(keyword in title.lower() for keyword in ["blog", "article", "changelog"]):
                 excluded_count += 1
                 continue
 
             # Limit chunk size to ~2000 characters for better embedding quality
-            docs.extend(chunk_document(
-                title=title,
-                section=section_name,
-                source=source_url,
-                content=clean_content,
-            ))
-    
+            docs.extend(
+                chunk_document(
+                    title=title,
+                    section=section_name,
+                    source=source_url,
+                    content=clean_content,
+                )
+            )
+
     print(f"✅ Parsed into {len(docs)} documentation chunks")
     if excluded_count > 0:
         print(f"ℹ️  Excluded {excluded_count} blog/article sections (keeping only technical docs)")
     return docs
 
 
-async def fetch_render_docs_sample() -> List[Dict]:
+async def fetch_render_docs_sample() -> list[dict]:
     """
     Sample Render documentation chunks (backup/demo mode).
     """
-    
+
     sample_docs = [
         {
             "title": "Deploying a Web Service",
@@ -122,7 +123,7 @@ To deploy a web service on Render:
 8. Click "Create Web Service"
 
 Render will build and deploy your service automatically. You'll get a URL like https://your-service.onrender.com.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "PostgreSQL Databases",
@@ -141,7 +142,7 @@ Database plans range from free (256MB) to accelerated-1024gb.
 You can create a database from the dashboard or using render.yaml.
 
 Connection strings are automatically injected as environment variables to services in the same account.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Static Sites",
@@ -163,7 +164,7 @@ Configuration:
 - Publish Directory: The directory with built assets (e.g., build, dist, public)
 
 Static sites are served over Render's global CDN for fast load times worldwide.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Environment Variables",
@@ -189,7 +190,7 @@ envVars:
     fromDatabase:
       name: my-postgres
       property: connectionString
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Infrastructure as Code (render.yaml)",
@@ -220,7 +221,7 @@ databases:
     user: myuser
 
 Render reads this file and creates/updates all resources automatically.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Autoscaling",
@@ -242,7 +243,7 @@ and scales down during low usage.
 Manual scaling is also available - you can set a specific number of instances.
 
 Note: Autoscaling is available on Standard plans and above.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Node.js Support",
@@ -268,7 +269,7 @@ Best practices:
 - Use .nvmrc or engines field for version pinning
 - Include package-lock.json or yarn.lock
 - Set NODE_ENV=production for production builds
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Python Support",
@@ -295,7 +296,7 @@ Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
 For Django apps:
 Build Command: pip install -r requirements.txt && python manage.py collectstatic --no-input
 Start Command: gunicorn myproject.wsgi:application
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Custom Domains",
@@ -317,7 +318,7 @@ SSL certificates are:
 
 You can add multiple domains to a single service.
 Render also supports apex domains (example.com) using ALIAS or ANAME records.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Health Checks",
@@ -349,7 +350,7 @@ Render uses health checks for:
 - Zero-downtime deploys
 - Automatic restarts
 - Load balancing
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Background Workers",
@@ -380,7 +381,7 @@ Workers can:
 - Use environment groups
 
 Unlike web services, workers don't get a public URL.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Cron Jobs",
@@ -411,7 +412,7 @@ Cron jobs:
 - Are billed only when running
 
 Perfect for backups, cleanup, report generation, etc.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Docker Support",
@@ -443,7 +444,7 @@ Render:
 - Caches layers for faster builds
 - Supports multi-stage builds
 - Can pull from private registries
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Private Networking",
@@ -474,7 +475,7 @@ envVars:
       name: internal-api
       type: pserv
       property: hostport
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Redis",
@@ -511,7 +512,7 @@ envVars:
       property: connectionString
 
 Perfect for session storage, caching, pub/sub, and queues.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Preview Environments",
@@ -542,7 +543,7 @@ When you open a PR:
 Preview environments are automatically deleted after the PR is merged or closed.
 
 Great for frontend apps, APIs, and full-stack applications.
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Build Optimization",
@@ -577,7 +578,7 @@ COPY package*.json ./
 RUN npm ci --only=production
 COPY . .
 CMD ["node", "server.js"]
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Monitoring and Alerts",
@@ -614,7 +615,7 @@ Best practices:
 - Monitor error rates
 - Track response times
 - Set up alerts for critical services
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Zero-Downtime Deploys",
@@ -648,7 +649,7 @@ Best practices:
 - Test deploys in preview environments
 - Monitor deploy metrics
 - Keep deploys small and frequent
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Logging",
@@ -685,7 +686,7 @@ Best practices:
 - Include timestamps
 - Don't log sensitive data
 - Use log levels (DEBUG, INFO, WARN, ERROR)
-            """.strip()
+            """.strip(),
         },
         {
             "title": "Secrets Management",
@@ -721,29 +722,27 @@ Render complies with:
 - SOC 2 Type II
 - GDPR
 - HIPAA (on Team plans)
-            """.strip()
-        }
+            """.strip(),
+        },
     ]
-    
+
     return sample_docs
 
 
-async def generate_embedding(text: str) -> List[float]:
+async def generate_embedding(text: str) -> list[float]:
     """Generate embedding for text with exponential backoff retry on rate limits."""
     import openai
 
     for attempt in range(5):
         try:
             response = await openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text,
-                dimensions=1536
+                model="text-embedding-3-small", input=text, dimensions=1536
             )
             return response.data[0].embedding
-        except openai.RateLimitError as e:
+        except openai.RateLimitError:
             if attempt == 4:
                 raise
-            wait = 2 ** attempt  # 1s, 2s, 4s, 8s
+            wait = 2**attempt  # 1s, 2s, 4s, 8s
             print(f"\n  ⏳ Rate limited, retrying in {wait}s...")
             await asyncio.sleep(wait)
 
@@ -751,14 +750,14 @@ async def generate_embedding(text: str) -> List[float]:
 def validate_api_keys():
     """Validate required API keys are set."""
     print("🔑 Checking API keys...")
-    
+
     openai_key = os.getenv("OPENAI_API_KEY")
-    
+
     if not openai_key or openai_key == "sk-...":
         print("\n❌ ERROR: OPENAI_API_KEY not set in .env file")
         print("   Get your key at: https://platform.openai.com/api-keys")
         return False
-    
+
     print(f"✅ OpenAI API key found (starts with: {openai_key[:10]}...)")
     return True
 
@@ -766,26 +765,29 @@ def validate_api_keys():
 async def test_database_connection():
     """Test database connection before doing expensive operations."""
     import sys
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    
-    from backend.config import settings
+
     import asyncpg
-    
+
+    from backend.config import settings
+
     print("🔍 Testing database connection...")
     print(f"   Database: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'unknown'}")
-    
+
     try:
         conn = await asyncpg.connect(settings.database_url)
         await conn.execute("SELECT 1")
-        
+
         # Check if vector extension is available
-        result = await conn.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')"
-        )
+        result = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')")
         if not result:
             print("\n⚠️  WARNING: pgvector extension not found")
-            print("   Run: docker-compose exec postgres psql -U render_qa_user -d render_qa_db -c 'CREATE EXTENSION vector;'")
-        
+            print(
+                "   Run: docker-compose exec postgres psql -U render_qa_user -d render_qa_db"
+                " -c 'CREATE EXTENSION vector;'"
+            )
+
         await conn.close()
         print("✅ Database connection successful!\n")
         return True
@@ -795,39 +797,39 @@ async def test_database_connection():
         print("   Expected format: postgresql://render_qa_user:local_dev_password@localhost:5432/render_qa_db")
         return False
     except asyncpg.PostgresConnectionError as e:
-        print(f"\n❌ ERROR: Cannot connect to database")
+        print("\n❌ ERROR: Cannot connect to database")
         print(f"   {e}")
         print("   Make sure PostgreSQL is running: docker-compose ps")
         return False
-    except Exception as e:
-        print(f"\n❌ ERROR: Database connection failed")
+    except Exception as e:  # noqa: BLE001 - Report any other failure and stop.
+        print("\n❌ ERROR: Database connection failed")
         print(f"   {e}")
         return False
 
 
 async def main():
     """Generate embeddings for all documentation."""
-    
+
     print("🚀 Starting Render documentation embedding generation")
     print("=" * 60)
     print()
-    
+
     # Validate prerequisites BEFORE doing expensive operations
     if not validate_api_keys():
         print("\n⚠️  Fix the API key configuration and try again")
         return
-    
+
     print()
-    
+
     # Test database connection BEFORE fetching docs and generating embeddings
     if not await test_database_connection():
         print("⚠️  Fix the database connection and try again")
         print("   Hint: Run 'docker-compose up -d' to start the database")
         return
-    
+
     try:
         docs = await fetch_render_docs()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Fall back to the sample docs on any failure.
         print(f"\n⚠️  Error fetching documentation: {e}")
         print("Falling back to sample documentation...")
         docs = await fetch_render_docs_sample()
@@ -838,44 +840,41 @@ async def main():
         tutorial_docs = await fetch_tutorial_docs()
         docs.extend(tutorial_docs)
         print(f"➕ Added {len(tutorial_docs)} tutorial chunks")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Continue without tutorials on any failure.
         print(f"\n⚠️  Error crawling tutorials: {e}")
         print("Continuing without tutorial content...")
 
     print(f"\n📊 Processing {len(docs)} documentation chunks")
-    
+
     print("\n🔄 Generating embeddings with OpenAI...")
     print("(This may take a few minutes depending on the amount of content)\n")
-    
+
     embedded_docs = []
     for i, doc in enumerate(docs, 1):
-        title = doc['title'][:60] + "..." if len(doc['title']) > 60 else doc['title']
+        title = doc["title"][:60] + "..." if len(doc["title"]) > 60 else doc["title"]
         print(f"  [{i:3d}/{len(docs)}] {title}")
-        
+
         # Generate embedding for the content
-        embedding = await generate_embedding(doc['content'])
-        
-        embedded_doc = {
-            **doc,
-            "embedding": embedding
-        }
-        
+        embedding = await generate_embedding(doc["content"])
+
+        embedded_doc = {**doc, "embedding": embedding}
+
         embedded_docs.append(embedded_doc)
-        
+
         # Delay to stay under 100 RPM limit (need >0.6s per request)
         await asyncio.sleep(0.65)
-        
+
         # Show progress every 50 chunks
         if i % 50 == 0:
-            print(f"\n  ✅ Completed {i}/{len(docs)} chunks ({i*100//len(docs)}%)\n")
-    
+            print(f"\n  ✅ Completed {i}/{len(docs)} chunks ({i * 100 // len(docs)}%)\n")
+
     # Save to JSON file
     output_path = Path(__file__).parent.parent / "embeddings" / "render_docs.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(output_path, 'w') as f:
+
+    with open(output_path, "w") as f:
         json.dump(embedded_docs, f, indent=2)
-    
+
     print("\n" + "=" * 60)
     print("✅ SUCCESS!")
     print(f"📊 Generated embeddings for {len(embedded_docs)} documentation chunks")
@@ -887,4 +886,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

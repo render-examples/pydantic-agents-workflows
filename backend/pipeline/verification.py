@@ -47,8 +47,7 @@ passage states it almost verbatim, ~0.6-0.8 when it is clearly implied, lower wh
 
 
 _verification_agent = openai_agent(
-    "verification",
-    settings.claims_model, VERIFICATION_INSTRUCTIONS, output_type=ClaimVerdict
+    "verification", settings.claims_model, VERIFICATION_INSTRUCTIONS, output_type=ClaimVerdict
 )
 
 
@@ -70,10 +69,7 @@ async def _verify_claim_with_embedding(claim_text: str, embedding: list) -> tupl
         logfire.debug(f"Claim verification: '{claim_text[:50]}...' - no candidates, unsupported")
         return Claim(claim=claim_text, verified=False, verification_score=0.0, supporting_docs=[]), 0, 0
 
-    passages = "\n\n".join(
-        f"[Passage {i}] Source: {doc.source}\n{doc.content}"
-        for i, doc in enumerate(docs, 1)
-    )
+    passages = "\n\n".join(f"[Passage {i}] Source: {doc.source}\n{doc.content}" for i, doc in enumerate(docs, 1))
     user_prompt = f"""Claim:
 {claim_text}
 
@@ -87,7 +83,7 @@ Decide whether the passages substantiate the claim."""
         model_settings={"temperature": 0.0, "max_tokens": 500},
     )
     verdict: ClaimVerdict = result.output
-    usage = result.usage()
+    usage = result.usage
     input_tokens = usage.input_tokens or 0
     output_tokens = usage.output_tokens or 0
 
@@ -139,17 +135,16 @@ async def verify_claims(claims: list[str]) -> dict:
     total_tokens = batch_result.usage.input_tokens
 
     # Verify all claims in parallel: retrieve candidate passages, then LLM entailment.
-    results = await asyncio.gather(*[
-        _verify_claim_with_embedding(c, e) for c, e in zip(claims, embeddings)
-    ])
+    results = await asyncio.gather(
+        *[_verify_claim_with_embedding(c, e) for c, e in zip(claims, embeddings, strict=True)]
+    )
     verified_claims: list[Claim] = [r[0] for r in results]
 
     # Calculate costs: claim embeddings + the per-claim entailment LLM calls
     judge_input_tokens = sum(r[1] for r in results)
     judge_output_tokens = sum(r[2] for r in results)
-    cost_usd = (
-        calculate_embedding_cost(total_tokens)
-        + calculate_openai_cost(judge_input_tokens, judge_output_tokens, settings.claims_model)
+    cost_usd = calculate_embedding_cost(total_tokens) + calculate_openai_cost(
+        judge_input_tokens, judge_output_tokens, settings.claims_model
     )
 
     # Calculate verification rate

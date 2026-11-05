@@ -93,11 +93,7 @@ def _keys(ip: str, now: float) -> tuple[str, str, str]:
 
 
 def _remaining(limits: Limits, visitor_day: int, all_day: int) -> int | None:
-    left = [
-        limit - used
-        for limit, used in ((limits.per_visitor, visitor_day), (limits.daily, all_day))
-        if limit > 0
-    ]
+    left = [limit - used for limit, used in ((limits.per_visitor, visitor_day), (limits.daily, all_day)) if limit > 0]
     return max(0, min(left)) if left else None
 
 

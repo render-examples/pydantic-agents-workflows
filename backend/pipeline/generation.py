@@ -1,6 +1,5 @@
 """Stage 3: Answer Generation."""
 
-
 import logfire
 from render import Retry
 
@@ -37,10 +36,7 @@ _answer_agent = anthropic_agent(
 
 
 @instrument_stage(PipelineConfig.STAGE_GENERATION)
-async def generate_answer(
-    question: str,
-    documents: list[Document]
-) -> dict:
+async def generate_answer(question: str, documents: list[Document]) -> dict:
     """
     Generate comprehensive answer using retrieved context.
 
@@ -56,19 +52,15 @@ async def generate_answer(
         "Generating answer with Claude",
         num_documents=len(documents),
         question_length=len(question),
-        model=settings.answer_model
+        model=settings.answer_model,
     )
 
     # Prepare context from documents
     context_parts = []
     for i, doc in enumerate(documents, 1):
         doc_metadata = doc.metadata or {}
-        title = doc_metadata.get('title', 'Unknown')
-        context_parts.append(
-            f"[Document {i}] {title}\n"
-            f"Source: {doc.source}\n"
-            f"Content: {doc.content}\n"
-        )
+        title = doc_metadata.get("title", "Unknown")
+        context_parts.append(f"[Document {i}] {title}\nSource: {doc.source}\nContent: {doc.content}\n")
 
     context = "\n\n".join(context_parts)
 
@@ -92,21 +84,14 @@ Answer:"""
     )
 
     usage = usage_and_cost(result, calculate_anthropic_cost, settings.answer_model)
-    input_tokens, output_tokens, cost_usd = (
-        usage["input_tokens"], usage["output_tokens"], usage["cost_usd"]
-    )
+    input_tokens, output_tokens, cost_usd = (usage["input_tokens"], usage["output_tokens"], usage["cost_usd"])
 
     logfire.info(
         "Answer generated",
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=cost_usd,
-        answer_length=len(result.output)
+        answer_length=len(result.output),
     )
 
-    return {
-        "answer": result.output,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cost_usd": cost_usd
-    }
+    return {"answer": result.output, "input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": cost_usd}

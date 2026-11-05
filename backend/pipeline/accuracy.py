@@ -55,10 +55,7 @@ _accuracy_agent = anthropic_agent(
 
 
 @instrument_stage(PipelineConfig.STAGE_ACCURACY)
-async def check_accuracy(
-    answer: str,
-    verified_claims: list[Claim]
-) -> dict:
+async def check_accuracy(answer: str, verified_claims: list[Claim]) -> dict:
     """
     Deep accuracy validation using Claude.
 
@@ -73,10 +70,12 @@ async def check_accuracy(
     logfire.info("Checking technical accuracy")
 
     # Prepare claims summary
-    claims_text = "\n".join([
-        f"- {claim.claim} (verified: {claim.verified}, score: {claim.verification_score:.2f})"
-        for claim in verified_claims
-    ])
+    claims_text = "\n".join(
+        [
+            f"- {claim.claim} (verified: {claim.verified}, score: {claim.verification_score:.2f})"
+            for claim in verified_claims
+        ]
+    )
 
     verified_count = sum(1 for c in verified_claims if c.verified)
     verification_text = f"{verified_count}/{len(verified_claims)} claims verified"
@@ -98,9 +97,7 @@ Evaluate the technical accuracy of this answer."""
     )
 
     usage = usage_and_cost(result, calculate_anthropic_cost, settings.accuracy_model)
-    input_tokens, output_tokens, cost_usd = (
-        usage["input_tokens"], usage["output_tokens"], usage["cost_usd"]
-    )
+    input_tokens, output_tokens, cost_usd = (usage["input_tokens"], usage["output_tokens"], usage["cost_usd"])
 
     output = result.output
     accuracy_score = output.accuracy_score
@@ -123,7 +120,7 @@ Evaluate the technical accuracy of this answer."""
         correction_count=len(corrections),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=cost_usd
+        cost_usd=cost_usd,
     )
 
     return {
@@ -132,5 +129,5 @@ Evaluate the technical accuracy of this answer."""
         "corrections": corrections,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cost_usd": cost_usd
+        "cost_usd": cost_usd,
     }

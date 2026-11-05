@@ -111,18 +111,14 @@ async def test_poll_with_token_for_other_run_is_404(client, workflows, store):
 
 async def test_poll_with_own_token_works(client, workflows, store):
     start = (await client.post("/ask", json=QUESTION)).json()
-    r = await client.get(
-        f"/ask/{start['run_id']}", params={"progress_token": start["progress_token"]}
-    )
+    r = await client.get(f"/ask/{start['run_id']}", params={"progress_token": start["progress_token"]})
     assert r.status_code == 200
     assert r.json()["status"] == "running"
 
 
 async def test_logs_with_wrong_token_is_404(client, workflows, store):
     start = (await client.post("/ask", json=QUESTION)).json()
-    r = await client.get(
-        f"/ask/{start['run_id']}/logs", params={"progress_token": str(uuid4())}
-    )
+    r = await client.get(f"/ask/{start['run_id']}/logs", params={"progress_token": str(uuid4())})
     assert r.status_code == 404
 
 
@@ -139,9 +135,7 @@ async def test_start_failure_hides_upstream_text(client, workflows, store):
 async def test_failed_run_hides_upstream_text(client, workflows, store):
     start = (await client.post("/ask", json=QUESTION)).json()
     workflows.run = SimpleNamespace(status="failed", results=[], error="Traceback secret")
-    r = await client.get(
-        f"/ask/{start['run_id']}", params={"progress_token": start["progress_token"]}
-    )
+    r = await client.get(f"/ask/{start['run_id']}", params={"progress_token": start["progress_token"]})
     assert r.json()["status"] == "failed"
     assert "secret" not in r.text
 
@@ -180,9 +174,7 @@ async def test_session_route_rejects_non_uuid_session_id(client, store):
 
 @pytest.mark.parametrize("limit", [-1, 0, 101])
 async def test_history_limit_bounds(client, store, limit):
-    r = await client.get(
-        "/history", params={"limit": limit}, headers={"X-Client-Id": CLIENT}
-    )
+    r = await client.get("/history", params={"limit": limit}, headers={"X-Client-Id": CLIENT})
     assert r.status_code == 422
 
 
@@ -232,9 +224,7 @@ async def test_demo_limit_returns_429_with_retry_after(client, workflows, store,
 async def test_demo_polling_does_not_use_questions(client, workflows, store, demo):
     start = (await client.post("/ask", json=QUESTION)).json()
     for _ in range(5):
-        await client.get(
-            f"/ask/{start['run_id']}", params={"progress_token": start["progress_token"]}
-        )
+        await client.get(f"/ask/{start['run_id']}", params={"progress_token": start["progress_token"]})
     assert (await client.get("/demo/status")).json() == {"demo": True, "remaining": 1}
 
 

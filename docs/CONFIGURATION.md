@@ -1,15 +1,16 @@
 # Configuration Guide
 
-Complete reference for all configuration options in the Ask Render Anything Assistant.
+This guide lists the settings for the Ask Render Anything Assistant. All settings are environment variables. `backend/config.py` defines them and their defaults. For local development, set them in `.env`.
 
 ## Table of Contents
 
 - [Environment Variables](#environment-variables)
 - [Security & Deployment Posture](#security--deployment-posture)
-- [Pipeline Configuration](#pipeline-configuration)
 - [Model Selection](#model-selection)
-- [RAG Configuration](#rag-configuration)
-- [Performance Tuning](#performance-tuning)
+- [Retrieval](#retrieval)
+- [Embeddings and Chunking](#embeddings-and-chunking)
+- [Timeouts](#timeouts)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -17,56 +18,61 @@ Complete reference for all configuration options in the Ask Render Anything Assi
 
 ### Required Variables
 
-These must be set for the application to run:
+The application does not start without these:
 
 ```bash
-# OpenAI API key for embeddings and GPT models
-OPENAI_API_KEY=sk-proj-...
-
-# Anthropic API key for Claude models
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Logfire token for observability
-LOGFIRE_TOKEN=...
-
-# PostgreSQL database URL (with pgvector extension)
-DATABASE_URL=postgresql://user:password@host:5432/dbname
+OPENAI_API_KEY=sk-proj-...   # Embeddings and the OpenAI models
+ANTHROPIC_API_KEY=sk-ant-... # The Anthropic models
+LOGFIRE_TOKEN=...            # Logfire write token
+DATABASE_URL=postgresql://user:password@host:5432/dbname  # PostgreSQL with pgvector
 ```
+
+The API service also needs `RENDER_API_KEY` and `WORKFLOW_SLUG` to start and poll workflow runs. For local development, see the README.
 
 ### Optional Variables
 
-These have sensible defaults but can be customized:
+These have defaults:
 
 ```bash
-# Generation Settings
-MAX_TOKENS=5000                          # Answer generation token limit
+# Generation
+MAX_TOKENS=5000                    # Answer token limit. Demo mode lowers it to 2000.
 
-# RAG Settings
-RAG_TOP_K=20                             # Number of documents to retrieve
-SIMILARITY_THRESHOLD=0.3                 # Minimum cosine similarity floor (0-1)
-BM25_WEIGHT=0.4                          # Weight for BM25 in hybrid search (0-1)
+# Retrieval
+RAG_TOP_K=20                       # Maximum number of documents to retrieve
+RELEVANCE_CUTOFF_FRACTION=0.75     # Keep a document only if its score is at least this fraction of the best score
+SIMILARITY_THRESHOLD=0.3           # Minimum cosine similarity for a retrieved document
+VERIFICATION_THRESHOLD=0.30        # Minimum cosine similarity for a claim verification passage
 
-# Embedding Settings
-EMBEDDING_MODEL=text-embedding-3-small   # OpenAI embedding model
-EMBEDDING_DIMENSIONS=1536                # Embedding vector dimensions
+# Embeddings
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
 
-# Model Selection
-ANSWER_MODEL=claude-sonnet-5-5  # Primary answer generation model
-CLAIMS_MODEL=gpt-5.4-mini                # Claims extraction model
-ACCURACY_MODEL=claude-sonnet-5-5  # Accuracy checking model
-EVAL_MODEL_OPENAI=gpt-5.4-mini           # OpenAI evaluator model
-EVAL_MODEL_ANTHROPIC=claude-sonnet-5-5  # Anthropic evaluator model
+# Models
+ANSWER_MODEL=claude-sonnet-5-5
+CLAIMS_MODEL=gpt-5.4-mini
+ACCURACY_MODEL=claude-sonnet-5-5
+EVAL_MODEL_OPENAI=gpt-5.4-mini
+EVAL_MODEL_ANTHROPIC=claude-sonnet-5-5
+QUERY_EXPANSION_MODEL=gpt-5.4-nano
 
-# Performance Settings
-TIMEOUT_SECONDS=30                       # Per-stage timeout
-ENABLE_CACHING=true                      # Cache embeddings
-LOG_LEVEL=INFO                           # Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+# Logging and Logfire
+LOG_LEVEL=INFO                     # DEBUG, INFO, WARNING, or ERROR
+ENVIRONMENT=production             # Logfire environment tag. Set to `development` locally.
+LOGFIRE_READ_TOKEN=                # Read token for the session logs view
+LOGFIRE_API_BASE=https://logfire-us.pydantic.dev  # Use https://logfire-eu.pydantic.dev for EU projects
+LOGFIRE_QUERY_WINDOW_DAYS=30       # How many days back the session logs query searches
 
-# Frontend Settings (for deployment)
-NEXT_PUBLIC_API_URL=http://localhost:8000  # Backend API base origin (no trailing slash)
+# API
+CORS_ORIGINS=http://localhost:3000 # Frontend origins, as a comma-separated list or a JSON list
 
-# Deployment
-ENVIRONMENT=production                   # Logfire environment tag; set to `development` locally
+# Demo mode (see the README "Demo mode" section)
+DEMO=false
+DEMO_RATE_LIMIT_PER_MINUTE=3
+DEMO_MAX_QUESTIONS_PER_VISITOR=10
+DEMO_DAILY_QUESTION_LIMIT=200      # Set a limit to 0 to turn it off
+
+# Frontend
+NEXT_PUBLIC_API_URL=http://localhost:8000  # Backend API origin, with no trailing slash
 ```
 
 ---
@@ -93,244 +99,99 @@ Set `ENVIRONMENT` so Logfire groups traces correctly.
 
 ---
 
-## Pipeline Configuration
-
-Edit `backend/config.py` to customize pipeline behavior:
-
-### Basic Configuration
-
-```python
-class PipelineConfig:
-    # Performance tuning
-    MAX_TOKENS = 2000                # Output token limit for generation
-    TIMEOUT_SECONDS = 30             # Per-stage timeout in seconds
-    
-    # RAG configuration
-    RAG_TOP_K = 10                   # Number of documents to retrieve
-    SIMILARITY_THRESHOLD = 0.75      # Minimum similarity score
-    BM25_WEIGHT = 0.4                # BM25 weight in hybrid search (0-1)
-    EMBEDDING_MODEL = "text-embedding-3-small"
-    EMBEDDING_DIMENSIONS = 1536
-    
-    # Model selection
-    ANSWER_MODEL = "claude-sonnet-5-5"
-    CLAIMS_MODEL = "gpt-5.4-mini"
-    ACCURACY_MODEL = "claude-sonnet-5-5"
-    EVAL_MODELS = ["gpt-5.4-mini", "claude-sonnet-5-5"]
-```
-
----
-
 ## Model Selection
 
-### Available Models
+Each model setting uses a fixed provider. Set it to a model ID from that provider.
 
-#### OpenAI Models
+| Setting | Stage | Provider |
+| --- | --- | --- |
+| `ANSWER_MODEL` | Answer generation | Anthropic |
+| `ACCURACY_MODEL` | Technical accuracy check | Anthropic |
+| `EVAL_MODEL_ANTHROPIC` | Quality evaluation | Anthropic |
+| `CLAIMS_MODEL` | Claims extraction and claim verification | OpenAI |
+| `EVAL_MODEL_OPENAI` | Quality evaluation | OpenAI |
+| `QUERY_EXPANSION_MODEL` | Query expansion | OpenAI |
 
-```python
-# Embedding models
-"text-embedding-3-small"    # Recommended, good balance of cost/quality
-"text-embedding-3-large"    # Higher quality, more expensive
-"text-embedding-ada-002"    # Legacy model, not recommended
+To lower cost, use smaller models:
 
-# Chat models
-"gpt-5.4-mini"              # Latest, recommended
-"gpt-4-turbo"               # Previous generation
-"gpt-3.5-turbo"             # Cheapest, lower quality
+```bash
+ANSWER_MODEL=claude-haiku-5-5
+ACCURACY_MODEL=claude-haiku-5-5
+EVAL_MODEL_ANTHROPIC=claude-haiku-5-5
+CLAIMS_MODEL=gpt-5.4-nano
+EVAL_MODEL_OPENAI=gpt-5.4-nano
 ```
 
-#### Anthropic Models
+To raise quality, use larger models:
 
-```python
-"claude-opus-5-5"             # Most capable, most expensive
-"claude-sonnet-5-5"           # Latest Sonnet, best balance (default)
-"claude-haiku-5-5"            # Fast and cheap
+```bash
+ANSWER_MODEL=claude-opus-5-5
+ACCURACY_MODEL=claude-opus-5-5
+EVAL_MODEL_ANTHROPIC=claude-opus-5-5
 ```
 
-### Model Selection Strategy
-
-**Cost-Optimized:**
-```python
-ANSWER_MODEL = "claude-haiku-5-5"          # Cheapest Claude
-CLAIMS_MODEL = "gpt-3.5-turbo"           # Cheapest OpenAI
-ACCURACY_MODEL = "gpt-5.4-mini"          # Balance
-EVAL_MODEL_OPENAI = "gpt-3.5-turbo"
-EVAL_MODEL_ANTHROPIC = "claude-haiku-5-5"
-```
-
-**Quality-Optimized:**
-```python
-ANSWER_MODEL = "claude-opus-4-8"           # Best Anthropic
-CLAIMS_MODEL = "gpt-5.4-mini"            # Best OpenAI for structured output
-ACCURACY_MODEL = "claude-sonnet-5-5"
-EVAL_MODEL_OPENAI = "gpt-5.4-mini"
-EVAL_MODEL_ANTHROPIC = "claude-opus-4-8"
-```
-
-**Balanced (Default):**
-```python
-ANSWER_MODEL = "claude-sonnet-5-5"  # Good balance
-CLAIMS_MODEL = "gpt-5.4-mini"                # Fast and cheap
-ACCURACY_MODEL = "claude-sonnet-5-5"  # Reliable
-EVAL_MODEL_OPENAI = "gpt-5.4-mini"
-EVAL_MODEL_ANTHROPIC = "claude-sonnet-5-5"
-```
+The pipeline calculates cost with the `genai-prices` package. If the package does not know a model ID, the pipeline uses a fallback rate of $3 per million input tokens and $15 per million output tokens.
 
 ---
 
-## RAG Configuration
+## Retrieval
 
-### Hybrid Search Parameters
+Retrieval combines vector search and full-text search. See [Hybrid Search](./HYBRID_SEARCH.md) for the details.
 
-```python
-# Number of documents to retrieve
-RAG_TOP_K = 10  # Increase for more context, decrease for faster retrieval
+- `RAG_TOP_K` sets the maximum number of documents.
+- `RELEVANCE_CUTOFF_FRACTION` removes documents that score well below the best match. Raise it toward 0.8 to get fewer sources. Lower it toward 0.6 to get more.
+- `SIMILARITY_THRESHOLD` removes any document below this cosine similarity, even when the best match is weak.
 
-# Minimum similarity threshold (0-1)
-SIMILARITY_THRESHOLD = 0.75  # Lower = more permissive, higher = more strict
+Two retrieval values are set in code, not in the environment:
 
-# BM25 weight (0-1)
-# 0 = pure semantic search
-# 1 = pure BM25 lexical search
-# 0.4 = 60% semantic, 40% BM25 (recommended)
-BM25_WEIGHT = 0.4
-
-# RRF constant (for combining rankings)
-RRF_K = 60  # Lower = more weight to top-ranked items
-```
-
-### Embedding Configuration
-
-```python
-# Embedding model
-EMBEDDING_MODEL = "text-embedding-3-small"
-
-# Embedding dimensions
-EMBEDDING_DIMENSIONS = 1536  # Must match model
-
-# Batch size for embedding generation
-EMBEDDING_BATCH_SIZE = 100
-
-# Enable embedding caching
-ENABLE_EMBEDDING_CACHE = True
-```
-
-### Document Chunking
-
-Edit `data/scripts/generate_embeddings.py`:
-
-```python
-# Chunk size (characters)
-CHUNK_SIZE = 1000  # Larger = more context, fewer chunks
-
-# Chunk overlap (characters)
-CHUNK_OVERLAP = 200  # Overlap between chunks for continuity
-
-# Minimum chunk size
-MIN_CHUNK_SIZE = 100  # Discard very small chunks
-```
+- The full-text search weight is `bm25_weight=0.4` in `backend/pipeline/retrieval.py`.
+- The Reciprocal Rank Fusion constant is `rrf_k = 60` in `VectorStore.hybrid_search` in `backend/database.py`.
 
 ---
 
-## Performance Tuning
+## Embeddings and Chunking
 
-### Latency Optimization
+The `documents.embedding` column is `vector(1536)`, and `data/scripts/generate_embeddings.py` always uses `text-embedding-3-small` with 1536 dimensions. Keep the default `EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS`. To change them, also change the column in `backend/database.py` and the script, then ingest all documents again.
 
-```python
-# Reduce token limits
-MAX_TOKENS = 1500  # Down from 2000
+`data/scripts/chunking.py` splits documents into chunks:
 
-# Reduce retrieval count
-RAG_TOP_K = 5  # Down from 10
+- `MAX_CHUNK_CHARS = 2000` sets the maximum chunk size. The splitter breaks at paragraph boundaries.
+- `MIN_CHUNK_CHARS = 100` sets the minimum size. The splitter discards shorter content.
+- Curated markdown pages get one chunk per `##` or `###` section.
 
-# Use faster models
-ANSWER_MODEL = "claude-haiku-5-5"  # Faster than Sonnet
+Chunks do not overlap.
 
-# Disable less critical stages (not recommended)
-ENABLE_CLAIMS_VERIFICATION = False
-ENABLE_ACCURACY_CHECK = False
-```
+---
 
-### Cost Optimization
+## Timeouts
 
-```python
-# Use cheaper models
-ANSWER_MODEL = "claude-haiku-5-5"
-CLAIMS_MODEL = "gpt-3.5-turbo"
-ACCURACY_MODEL = "gpt-5.4-mini"
+Timeouts are set in code. Each pipeline stage sets the timeout for its model requests with `model_request_workflows(timeout_seconds=...)`:
 
-# Reduce token limits
-MAX_TOKENS = 1000
+| Stage | Timeout |
+| --- | --- |
+| Answer generation | 120 seconds |
+| Technical accuracy check | 90 seconds |
+| Claims extraction | 60 seconds |
+| Quality evaluation | 60 seconds |
 
-# Enable aggressive caching
-ENABLE_CACHING = True
-CACHE_TTL_SECONDS = 3600  # 1 hour
-```
-
-### Quality Optimization
-
-```python
-# Use best models
-ANSWER_MODEL = "claude-opus-4-8"
-CLAIMS_MODEL = "gpt-5.4-mini"
-ACCURACY_MODEL = "claude-sonnet-5-5"
-
-# Increase token limits
-MAX_TOKENS = 3000
-
-# More RAG context
-RAG_TOP_K = 15
-```
+The `run_qa_pipeline` task in `workflows/app.py` has a timeout of 600 seconds.
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
+**Answers are slow or time out:** Lower `MAX_TOKENS`, or use a smaller `ANSWER_MODEL`.
 
-**Pipeline times out:**
-```python
-# Increase timeout
-TIMEOUT_SECONDS = 60
+**Answers miss relevant documentation:** Lower `RELEVANCE_CUTOFF_FRACTION` or `SIMILARITY_THRESHOLD`.
 
-# Or reduce token limit
-MAX_TOKENS = 1500
-```
+**Answers cite unrelated sources:** Raise `RELEVANCE_CUTOFF_FRACTION`.
 
-**Poor retrieval quality:**
-```python
-# Improve RAG retrieval
-RAG_TOP_K = 15
-SIMILARITY_THRESHOLD = 0.70
-```
-
-**Costs too high:**
-```python
-# Use cheaper models
-ANSWER_MODEL = "claude-haiku-5-5"
-CLAIMS_MODEL = "gpt-3.5-turbo"
-
-# Reduce token limit
-MAX_TOKENS = 1000
-```
-
-**Low quality scores:**
-```python
-# Use better models
-ANSWER_MODEL = "claude-sonnet-5-5"
-
-# More context
-RAG_TOP_K = 15
-
-# More output tokens
-MAX_TOKENS = 2500
-```
+**Costs are too high:** Use the smaller models in [Model Selection](#model-selection), and lower `MAX_TOKENS`.
 
 ---
 
 ## Related Documentation
 
-- [Pipeline Guide](./PIPELINE.md) - Detailed pipeline stages
+- [Pipeline Guide](./PIPELINE.md) - Pipeline stages
 - [Observability Guide](./OBSERVABILITY.md) - Monitoring and instrumentation
-- [Hybrid Search Deep-Dive](./HYBRID_SEARCH.md) - Technical details on retrieval
-
+- [Hybrid Search](./HYBRID_SEARCH.md) - Retrieval details

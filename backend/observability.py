@@ -1,17 +1,16 @@
 """Logfire configuration and instrumentation."""
 
+import time
+from collections.abc import Callable
+from contextlib import asynccontextmanager
+from functools import wraps
+from typing import Any, ParamSpec, TypeVar
+
 import logfire
 from logfire import LogfireSpan
-from typing import Any, Callable, TypeVar
-try:
-    from typing import ParamSpec
-except ImportError:
-    from typing_extensions import ParamSpec
-from functools import wraps
-import time
-from contextlib import asynccontextmanager
 
 from backend.config import settings
+from backend.prices import model_cost
 
 # Configure Logfire
 logfire.configure(
@@ -21,10 +20,10 @@ logfire.configure(
 )
 
 # Auto-instrument libraries globally
-logfire.instrument_openai()       # Instruments direct OpenAI clients (embeddings.py)
+logfire.instrument_openai()  # Instruments direct OpenAI clients (embeddings.py)
 logfire.instrument_pydantic_ai()  # Instruments pydantic-ai agents (all LLM pipeline stages)
-logfire.instrument_asyncpg()      # Database queries
-logfire.instrument_httpx()        # HTTP client requests
+logfire.instrument_asyncpg()  # Database queries
+logfire.instrument_httpx()  # HTTP client requests
 logfire.instrument_system_metrics()  # System metrics (CPU, memory, swap)
 # Note: FastAPI instrumentation is done in main.py after app creation
 
@@ -32,8 +31,8 @@ logfire.instrument_system_metrics()  # System metrics (CPU, memory, swap)
 logfire.info("[startup] DEMO mode enabled" if settings.demo else "[startup] normal mode")
 
 
-P = ParamSpec('P')
-R = TypeVar('R')
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def _record_stage_success(span: LogfireSpan, start_time: float, result: Any) -> None:
@@ -102,28 +101,20 @@ def instrument_stage(stage_name: str):
 @asynccontextmanager
 async def pipeline_trace(question: str):
     """Context manager for tracing an entire pipeline execution."""
-    
-    with logfire.span(
-        "qa_pipeline",
-        question=question
-    ) as span:
+
+    with logfire.span("qa_pipeline", question=question) as span:
         span.set_attribute("span_type", "pipeline")
         start_time = time.time()
-        pipeline_context = {
-            "span": span,
-            "start_time": start_time,
-            "total_cost": 0.0,
-            "stages": []
-        }
-        
+        pipeline_context = {"span": span, "start_time": start_time, "total_cost": 0.0, "stages": []}
+
         try:
             yield pipeline_context
-            
+
             duration_ms = (time.time() - start_time) * 1000
             span.set_attribute("duration_ms", duration_ms)
             span.set_attribute("total_cost_usd", pipeline_context["total_cost"])
             span.set_attribute("success", True)
-            
+
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             span.set_attribute("duration_ms", duration_ms)
@@ -135,20 +126,16 @@ async def pipeline_trace(question: str):
 
 def calculate_embedding_cost(tokens: int) -> float:
     """Calculate cost for embedding API calls."""
-    from backend.prices import model_cost
-    from backend.config import settings
     return model_cost(tokens, 0, settings.embedding_model, "openai")
 
 
 def calculate_openai_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """Calculate cost for OpenAI API calls."""
-    from backend.prices import model_cost
     return model_cost(input_tokens, output_tokens, model, "openai")
 
 
 def calculate_anthropic_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """Calculate cost for Anthropic API calls."""
-    from backend.prices import model_cost
     return model_cost(input_tokens, output_tokens, model, "anthropic")
 
 
@@ -161,7 +148,7 @@ def usage_and_cost(result, cost_fn, model: str) -> dict:
 
     Returns a dict with ``input_tokens``, ``output_tokens``, ``cost_usd``.
     """
-    usage = result.usage()
+    usage = result.usage
     input_tokens = usage.input_tokens or 0
     output_tokens = usage.output_tokens or 0
     return {
@@ -177,7 +164,7 @@ def track_pipeline_metrics(
     total_duration_ms: float,
     quality_score: float,
     accuracy_score: float,
-    session_id: str = None
+    session_id: str | None = None,
 ):
     """
     Track custom business metrics for the pipeline execution.
@@ -230,4 +217,3 @@ def track_pipeline_metrics(
         accuracy_score=accuracy_score,
         session_id=session_id or "unknown",
     )
-

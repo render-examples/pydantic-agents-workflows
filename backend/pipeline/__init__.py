@@ -16,4 +16,3 @@ __all__ = [
     "retrieve_documents",
     "verify_claims",
 ]
-

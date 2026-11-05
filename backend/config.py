@@ -6,7 +6,6 @@ from typing import Annotated, Any
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-
 # Max embedding dimensions supported per OpenAI model. Used to reject an
 # embedding_model/embedding_dimensions mismatch at startup (a wrong pairing
 # otherwise surfaces only as opaque API errors at query time). Unknown models
@@ -27,13 +26,13 @@ TRUE_VALUES = frozenset({"1", "true", "t", "yes", "y", "on"})
 
 class Settings(BaseSettings):
     """Application settings."""
-    
+
     # extra="ignore": tolerate SDK-only env vars that live in the shared .env but aren't
     # Settings fields (e.g. RENDER_USE_LOCAL_DEV / RENDER_LOCAL_DEV_URL for local dev, and the
     # platform-injected RENDER_SDK_MODE / RENDER_SDK_SOCKET_PATH). Without this, pydantic-settings
     # defaults to extra="forbid" and crashes on startup when those keys appear in the .env file.
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    
+
     # API Keys
     openai_api_key: str
     anthropic_api_key: str
@@ -45,18 +44,17 @@ class Settings(BaseSettings):
     # clause already pins results to one trace; this window just needs to comfortably
     # contain it. 30 (not 7) so logs stay fetchable for sessions older than a week.
     logfire_query_window_days: int = 30
-    
+
     # Database
     database_url: str
 
     # Render Workflows (gateway -> workflow service)
     render_api_key: str = ""  # Required to trigger/poll workflow runs
     workflow_slug: str = ""  # e.g. "pydantic-agents-workflows" (from the Workflow's Dashboard page)
-    
+
     # Pipeline Configuration
     max_tokens: int = 5000  # Answer generation budget. Claude 5 models count about 30% more tokens than Claude 4.
-    timeout_seconds: int = 30
-    
+
     # RAG Configuration
     rag_top_k: int = 20  # Hard ceiling / backstop on retrieved docs. The adaptive relative
     # cutoff (see _apply_relative_cutoff) is what trims the tail per question; this just caps it.
@@ -68,10 +66,11 @@ class Settings(BaseSettings):
     # Hard floor beneath the relative cutoff: a doc is never returned below this cosine, so even
     # a question whose best match is weak can't admit sub-threshold noise. Gates the final set.
     similarity_threshold: float = 0.3
-    verification_threshold: float = 0.30  # Similarity threshold for claim verification (lowered to catch explicit facts)
+    # Similarity threshold for claim verification (lowered to catch explicit facts)
+    verification_threshold: float = 0.30
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
-    
+
     # Model Selection
     answer_model: str = "claude-sonnet-5-5"
     claims_model: str = "gpt-5.4-mini"
@@ -79,15 +78,14 @@ class Settings(BaseSettings):
     eval_model_openai: str = "gpt-5.4-mini"
     eval_model_anthropic: str = "claude-sonnet-5-5"
     query_expansion_model: str = "gpt-5.4-nano"
-    
+
     # Performance
-    enable_caching: bool = True
     log_level: str = "INFO"
     # Deployment environment tag sent to Logfire (traces are grouped by it).
     # Defaults to "production"; set ENVIRONMENT=development locally so dev traces
     # aren't mixed into the production view.
     environment: str = "production"
-    
+
     # CORS. Origins the browser may call the API from. Accepts a JSON list or a
     # comma-separated string. A bare host gets an `https://` prefix.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
@@ -164,4 +162,3 @@ class PipelineConfig:
 
 # Global settings instance
 settings = Settings()
-

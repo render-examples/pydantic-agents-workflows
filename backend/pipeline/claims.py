@@ -1,6 +1,5 @@
 """Stage 4: Claims Extraction."""
 
-
 import logfire
 
 from backend.config import PipelineConfig, settings
@@ -57,11 +56,7 @@ async def extract_claims(answer: str) -> dict:
         dict with 'claims', 'input_tokens', 'output_tokens', 'cost_usd'
     """
 
-    logfire.info(
-        "Extracting claims from answer",
-        answer_length=len(answer),
-        model=settings.claims_model
-    )
+    logfire.info("Extracting claims from answer", answer_length=len(answer), model=settings.claims_model)
 
     result = await _claims_agent.run(
         f"Extract all factual claims from this answer:\n\n{answer}",
@@ -69,9 +64,7 @@ async def extract_claims(answer: str) -> dict:
     )
 
     usage = usage_and_cost(result, calculate_openai_cost, settings.claims_model)
-    input_tokens, output_tokens, cost_usd = (
-        usage["input_tokens"], usage["output_tokens"], usage["cost_usd"]
-    )
+    input_tokens, output_tokens, cost_usd = (usage["input_tokens"], usage["output_tokens"], usage["cost_usd"])
 
     # Warn if response was near the token limit (possible truncation)
     if output_tokens >= 3900:
@@ -103,9 +96,4 @@ async def extract_claims(answer: str) -> dict:
             cost_usd=cost_usd,
         )
 
-    return {
-        "claims": claims,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cost_usd": cost_usd
-    }
+    return {"claims": claims, "input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": cost_usd}
