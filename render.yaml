@@ -26,8 +26,6 @@ envVarGroups:
       # Pipeline configuration
       - key: MAX_TOKENS
         value: "5000"
-      - key: TIMEOUT_SECONDS
-        value: "30"
       # RAG configuration
       - key: RAG_TOP_K
         value: "20"

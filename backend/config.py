@@ -54,7 +54,6 @@ class Settings(BaseSettings):
 
     # Pipeline Configuration
     max_tokens: int = 5000  # Answer generation budget. Claude 5 models count about 30% more tokens than Claude 4.
-    timeout_seconds: int = 30
 
     # RAG Configuration
     rag_top_k: int = 20  # Hard ceiling / backstop on retrieved docs. The adaptive relative

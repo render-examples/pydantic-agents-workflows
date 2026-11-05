@@ -33,7 +33,7 @@ from opentelemetry import trace
 from pydantic_ai_harness import RenderWorkflows
 from render import Retry, TaskContext
 
-from backend.config import settings
+from backend.config import PipelineConfig, settings
 from backend.database import vector_store
 from backend.ingestion import embed_documents, replace_source
 from backend.models import AnswerResponse, PipelineStageResult
@@ -192,11 +192,11 @@ async def run_qa_pipeline(
 
         # --- Retrieval phase (in-process): embedding + RAG ---
         # Question embedding
-        await emit("question_embedding", "started", "Embedding your question...", 5, total_cost)
+        await emit(PipelineConfig.STAGE_EMBEDDING, "started", "Embedding your question...", 5, total_cost)
         embed_result = await embed_question(question)
         stages.append(
             _stage_result(
-                "question_embedding",
+                PipelineConfig.STAGE_EMBEDDING,
                 cost_usd=embed_result["cost_usd"],
                 tokens_used=embed_result["tokens"],
                 model=settings.embedding_model,
@@ -204,14 +204,14 @@ async def run_qa_pipeline(
             )
         )
         total_cost += embed_result["cost_usd"]
-        await emit("question_embedding", "completed", "Question embedded", 12.5, total_cost)
+        await emit(PipelineConfig.STAGE_EMBEDDING, "completed", "Question embedded", 12.5, total_cost)
 
         # RAG retrieval (multi-query expansion + curated-doc injection run in-process)
-        await emit("rag_retrieval", "started", "Searching documentation...", 15, total_cost)
+        await emit(PipelineConfig.STAGE_RETRIEVAL, "started", "Searching documentation...", 15, total_cost)
         retrieval_result = await retrieve_documents(embed_result["embedding"], original_question=question)
         stages.append(
             _stage_result(
-                "rag_retrieval",
+                PipelineConfig.STAGE_RETRIEVAL,
                 cost_usd=retrieval_result["cost_usd"],
                 model=settings.query_expansion_model,
                 metadata={
@@ -223,7 +223,7 @@ async def run_qa_pipeline(
         total_cost += retrieval_result["cost_usd"]
         documents = retrieval_result["documents"]
         await emit(
-            "rag_retrieval",
+            PipelineConfig.STAGE_RETRIEVAL,
             "completed",
             f"Found {len(documents)} relevant documents",
             25,
@@ -238,7 +238,7 @@ async def run_qa_pipeline(
         gen_result = await generate_answer(question, documents)
         stages.append(
             _stage_result(
-                "answer_generation",
+                PipelineConfig.STAGE_GENERATION,
                 cost_usd=gen_result["cost_usd"],
                 tokens_used=gen_result["input_tokens"] + gen_result["output_tokens"],
                 model=settings.answer_model,
@@ -255,7 +255,7 @@ async def run_qa_pipeline(
         claims_result = await extract_claims(answer_text)
         stages.append(
             _stage_result(
-                "claims_extraction",
+                PipelineConfig.STAGE_CLAIMS,
                 cost_usd=claims_result["cost_usd"],
                 tokens_used=claims_result["input_tokens"] + claims_result["output_tokens"],
                 model=settings.claims_model,
@@ -280,7 +280,7 @@ async def run_qa_pipeline(
         verified_count = len([c for c in verified_claims if c.verified])
         stages.append(
             _stage_result(
-                "claims_verification",
+                PipelineConfig.STAGE_VERIFICATION,
                 cost_usd=verification_result["cost_usd"],
                 tokens_used=verification_result["tokens_used"],
                 model=settings.embedding_model,
@@ -329,7 +329,7 @@ async def run_qa_pipeline(
         eval_tokens = sum(rate["input_tokens"] + rate["output_tokens"] for rate in (openai_rate, anthropic_rate))
         stages.append(
             _stage_result(
-                "technical_accuracy",
+                PipelineConfig.STAGE_ACCURACY,
                 duration_ms=parallel_duration,
                 cost_usd=accuracy_result["cost_usd"],
                 tokens_used=accuracy_result["input_tokens"] + accuracy_result["output_tokens"],
@@ -347,7 +347,7 @@ async def run_qa_pipeline(
         )
         stages.append(
             _stage_result(
-                "quality_evaluation",
+                PipelineConfig.STAGE_EVALUATION,
                 duration_ms=parallel_duration,
                 cost_usd=eval_cost,
                 tokens_used=eval_tokens,
