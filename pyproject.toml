@@ -47,6 +47,10 @@ dev = [
 [tool.ruff]
 line-length = 120
 
+[tool.ruff.format]
+# Keep the hand-aligned code examples in the docs.
+exclude = ["*.md"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "BLE"]
 

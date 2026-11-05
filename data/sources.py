@@ -41,15 +41,16 @@ CURATED_DIR = Path(__file__).parent / "curated"
 class Source:
     """A live documentation source ingested into the vector store."""
 
-    name: str                                   # registry key + ingest_source() input
-    source_url: str                             # canonical `source` value (delete key + dedup)
-    build: Callable[[], Awaitable[list[Doc]]]   # fetch/parse → docs (pre-embedding)
-    legacy_sources: tuple[str, ...] = ()        # extra sources this one supersedes
+    name: str  # registry key + ingest_source() input
+    source_url: str  # canonical `source` value (delete key + dedup)
+    build: Callable[[], Awaitable[list[Doc]]]  # fetch/parse → docs (pre-embedding)
+    legacy_sources: tuple[str, ...] = ()  # extra sources this one supersedes
 
 
 # ---------------------------------------------------------------------------
 # Strategy 1: curated page — chunked docs from data/curated/<name>.md
 # ---------------------------------------------------------------------------
+
 
 def _curated_build(
     name: str, source_url: str, title: str, section: str, metadata: dict
@@ -125,17 +126,27 @@ def _format_table_as_text(headers: list[str], rows: list[list[str]], title: str)
     lines = [f"# {title}", "Source: https://render.com/pricing", ""]
 
     if "Web Services" in title:
-        lines.append("This table shows all available instance types, pricing plans, and tiers for Render Web Services, Private Services, and Background Workers.")
+        lines.append(
+            "This table shows all available instance types, pricing plans, and tiers for Render Web Services, Private Services, and Background Workers."
+        )
         lines.append("Plans range from Free to Pro Ultra with specifications for RAM, CPU, and monthly costs.")
         lines.append("")
     elif "Postgres" in title:
-        lines.append("This table shows all available database plans, instance types, tiers, and pricing for Render Postgres databases.")
-        lines.append("Plans include Free, Basic, Pro, and Accelerated tiers with specifications for CPU, RAM, storage, and connection limits.")
+        lines.append(
+            "This table shows all available database plans, instance types, tiers, and pricing for Render Postgres databases."
+        )
+        lines.append(
+            "Plans include Free, Basic, Pro, and Accelerated tiers with specifications for CPU, RAM, storage, and connection limits."
+        )
         lines.append("Database plans range from free tier to large production instances.")
         lines.append("")
     elif "Key Value" in title:
-        lines.append("This table shows all available datastore plans, instance types, tiers, and pricing for Render Key Value (Redis-compatible).")
-        lines.append("Plans include Free, Starter, Standard, Pro, and Pro Plus with specifications for RAM, connection limits, and persistence options.")
+        lines.append(
+            "This table shows all available datastore plans, instance types, tiers, and pricing for Render Key Value (Redis-compatible)."
+        )
+        lines.append(
+            "Plans include Free, Starter, Standard, Pro, and Pro Plus with specifications for RAM, connection limits, and persistence options."
+        )
         lines.append("Key Value database plans range from free tier to large production instances.")
         lines.append("")
     elif "Cron" in title:
@@ -187,12 +198,14 @@ async def _build_pricing() -> list[Doc]:
             continue
         content = _format_table_as_text(headers, rows, title)
         if content:
-            docs.append({
-                "content": content,
-                "title": title,
-                "section": title,
-                "metadata": {"type": "pricing", "title": title},
-            })
+            docs.append(
+                {
+                    "content": content,
+                    "title": title,
+                    "section": title,
+                    "metadata": {"type": "pricing", "title": title},
+                }
+            )
     return docs
 
 
@@ -204,18 +217,21 @@ TUTORIALS_INDEX_URL = "https://render.com/tutorials"
 
 # Used only if the live index fetch fails.
 FALLBACK_TUTORIALS = [
-    {"title": "Localhost Part 1: Deploy an AI code-review agent on Render",
-     "url": "https://render.com/tutorials/deploy-ai-agents-on-render"},
-    {"title": "Localhost Part 2: Run AI agents as Render Workflows",
-     "url": "https://render.com/tutorials/agents-on-render-workflows"},
-    {"title": "Render Workflows quickstart",
-     "url": "https://render.com/tutorials/render-workflows"},
-    {"title": "Build and host a secure MCP server on Render",
-     "url": "https://render.com/tutorials/secure-mcp-server-on-render"},
-    {"title": "Postgres on Render: a deep dive",
-     "url": "https://render.com/tutorials/postgres-on-render"},
-    {"title": "When deploys go wrong",
-     "url": "https://render.com/tutorials/when-deploys-go-wrong"},
+    {
+        "title": "Localhost Part 1: Deploy an AI code-review agent on Render",
+        "url": "https://render.com/tutorials/deploy-ai-agents-on-render",
+    },
+    {
+        "title": "Localhost Part 2: Run AI agents as Render Workflows",
+        "url": "https://render.com/tutorials/agents-on-render-workflows",
+    },
+    {"title": "Render Workflows quickstart", "url": "https://render.com/tutorials/render-workflows"},
+    {
+        "title": "Build and host a secure MCP server on Render",
+        "url": "https://render.com/tutorials/secure-mcp-server-on-render",
+    },
+    {"title": "Postgres on Render: a deep dive", "url": "https://render.com/tutorials/postgres-on-render"},
+    {"title": "When deploys go wrong", "url": "https://render.com/tutorials/when-deploys-go-wrong"},
 ]
 
 
@@ -251,12 +267,14 @@ def _tutorials_index_content(tutorials: list[dict]) -> str:
 async def _build_tutorials_index() -> list[Doc]:
     """Fetch the live tutorial list (curated fallback) and build the nav doc."""
     tutorials = await fetch_tutorial_index() or FALLBACK_TUTORIALS
-    return [{
-        "content": _tutorials_index_content(tutorials),
-        "title": "Render Tutorials",
-        "section": "Render Tutorials Index",
-        "metadata": {"type": "tutorial_index", "category": "tutorials", "title": "Render Tutorials"},
-    }]
+    return [
+        {
+            "content": _tutorials_index_content(tutorials),
+            "title": "Render Tutorials",
+            "section": "Render Tutorials Index",
+            "metadata": {"type": "tutorial_index", "category": "tutorials", "title": "Render Tutorials"},
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------

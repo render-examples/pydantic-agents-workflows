@@ -20,10 +20,10 @@ logfire.configure(
 )
 
 # Auto-instrument libraries globally
-logfire.instrument_openai()       # Instruments direct OpenAI clients (embeddings.py)
+logfire.instrument_openai()  # Instruments direct OpenAI clients (embeddings.py)
 logfire.instrument_pydantic_ai()  # Instruments pydantic-ai agents (all LLM pipeline stages)
-logfire.instrument_asyncpg()      # Database queries
-logfire.instrument_httpx()        # HTTP client requests
+logfire.instrument_asyncpg()  # Database queries
+logfire.instrument_httpx()  # HTTP client requests
 logfire.instrument_system_metrics()  # System metrics (CPU, memory, swap)
 # Note: FastAPI instrumentation is done in main.py after app creation
 
@@ -31,8 +31,8 @@ logfire.instrument_system_metrics()  # System metrics (CPU, memory, swap)
 logfire.info("[startup] DEMO mode enabled" if settings.demo else "[startup] normal mode")
 
 
-P = ParamSpec('P')
-R = TypeVar('R')
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def _record_stage_success(span: LogfireSpan, start_time: float, result: Any) -> None:
@@ -101,28 +101,20 @@ def instrument_stage(stage_name: str):
 @asynccontextmanager
 async def pipeline_trace(question: str):
     """Context manager for tracing an entire pipeline execution."""
-    
-    with logfire.span(
-        "qa_pipeline",
-        question=question
-    ) as span:
+
+    with logfire.span("qa_pipeline", question=question) as span:
         span.set_attribute("span_type", "pipeline")
         start_time = time.time()
-        pipeline_context = {
-            "span": span,
-            "start_time": start_time,
-            "total_cost": 0.0,
-            "stages": []
-        }
-        
+        pipeline_context = {"span": span, "start_time": start_time, "total_cost": 0.0, "stages": []}
+
         try:
             yield pipeline_context
-            
+
             duration_ms = (time.time() - start_time) * 1000
             span.set_attribute("duration_ms", duration_ms)
             span.set_attribute("total_cost_usd", pipeline_context["total_cost"])
             span.set_attribute("success", True)
-            
+
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             span.set_attribute("duration_ms", duration_ms)
@@ -172,7 +164,7 @@ def track_pipeline_metrics(
     total_duration_ms: float,
     quality_score: float,
     accuracy_score: float,
-    session_id: str | None = None
+    session_id: str | None = None,
 ):
     """
     Track custom business metrics for the pipeline execution.
@@ -225,4 +217,3 @@ def track_pipeline_metrics(
         accuracy_score=accuracy_score,
         session_id=session_id or "unknown",
     )
-

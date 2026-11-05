@@ -77,7 +77,7 @@ app = FastAPI(
     title="Ask Render Anything Assistant",
     description="Production-grade AI pipeline with observable AI using Pydantic AI, Logfire, and Render",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -104,11 +104,7 @@ logfire.instrument_fastapi(app, request_attributes_mapper=_drop_endpoint_argumen
 @app.get("/", tags=["Health"])
 async def root():
     """Root endpoint."""
-    return {
-        "name": "Ask Render Anything Assistant",
-        "version": "1.0.0",
-        "status": "operational"
-    }
+    return {"name": "Ask Render Anything Assistant", "version": "1.0.0", "status": "operational"}
 
 
 @app.get("/health", response_model=HealthCheck, tags=["Health"])
@@ -118,9 +114,7 @@ async def health_check():
     db_healthy = await vector_store.health_check()
 
     return HealthCheck(
-        status="healthy" if db_healthy else "degraded",
-        database_connected=db_healthy,
-        logfire_enabled=True
+        status="healthy" if db_healthy else "degraded", database_connected=db_healthy, logfire_enabled=True
     )
 
 
@@ -286,7 +280,7 @@ async def get_stats():
         "document_count": doc_count,
         "embedding_model": settings.embedding_model,
         "embedding_dimensions": settings.embedding_dimensions,
-        "rag_top_k": settings.rag_top_k
+        "rag_top_k": settings.rag_top_k,
     }
 
 
@@ -302,10 +296,7 @@ async def get_history(client_id: ClientId, limit: Annotated[int, Query(ge=1, le=
 
     sessions = await vector_store.get_recent_sessions(client_id=client_id, limit=limit)
 
-    return {
-        "sessions": sessions,
-        "count": len(sessions)
-    }
+    return {"sessions": sessions, "count": len(sessions)}
 
 
 @app.get("/history/{session_id}", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
@@ -341,11 +332,7 @@ async def delete_session(session_id: UUID, client_id: ClientId):
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return {
-        "success": True,
-        "message": "Session deleted successfully",
-        "session_id": str(session_id)
-    }
+    return {"success": True, "message": "Session deleted successfully", "session_id": str(session_id)}
 
 
 @app.delete("/history", tags=["Q&A"], dependencies=[Depends(require_history_enabled)])
@@ -361,11 +348,7 @@ async def clear_all_history(client_id: ClientId):
 
     deleted_count = await vector_store.delete_all_sessions(client_id)
 
-    return {
-        "success": True,
-        "message": f"Deleted {deleted_count} sessions",
-        "count": deleted_count
-    }
+    return {"success": True, "message": f"Deleted {deleted_count} sessions", "count": deleted_count}
 
 
 @app.get("/sessions/{session_id}/logs", tags=["Observability"], dependencies=[Depends(require_history_enabled)])
@@ -385,11 +368,11 @@ async def get_session_logs(session_id: UUID, client_id: ClientId):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    trace_id = session.get('trace_id')
+    trace_id = session.get("trace_id")
     if not trace_id:
         raise HTTPException(
             status_code=404,
-            detail="Trace ID not available for this session (may be from before trace logging was enabled)"
+            detail="Trace ID not available for this session (may be from before trace logging was enabled)",
         )
 
     return await fetch_logfire_logs(trace_id)
@@ -398,10 +381,4 @@ async def get_session_logs(session_id: UUID, client_id: ClientId):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level=settings.log_level.lower()
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level=settings.log_level.lower())

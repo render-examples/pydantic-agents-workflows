@@ -150,9 +150,7 @@ async def _discover_pages(client: httpx.AsyncClient) -> list[str]:
 
 async def fetch_tutorial_index() -> list[dict]:
     """Return [{title, url}] for each tutorial overview linked from the index page."""
-    async with httpx.AsyncClient(
-        timeout=REQUEST_TIMEOUT, follow_redirects=True
-    ) as client:
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
         html = await _fetch(client, INDEX_URL)
     if not html:
         return []
@@ -178,9 +176,7 @@ async def fetch_tutorial_index() -> list[dict]:
 
 async def fetch_tutorial_docs() -> list[dict]:
     """Crawl all tutorials + sub-pages and return chunked doc dicts."""
-    async with httpx.AsyncClient(
-        timeout=REQUEST_TIMEOUT, follow_redirects=True
-    ) as client:
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
         pages = await _discover_pages(client)
         print(f"🔎 Crawling {len(pages)} tutorial pages...")
 
@@ -196,9 +192,7 @@ async def fetch_tutorial_docs() -> list[dict]:
             if not title:
                 # Fall back to a readable title from the slug.
                 title = path.split("/")[-1].replace("-", " ").title()
-            docs = chunk_document(
-                title=title, section=None, source=source, content=body
-            )
+            docs = chunk_document(title=title, section=None, source=source, content=body)
             if not docs:
                 print(f"  ⚠️  Skipping {source} (insufficient content)")
             return docs

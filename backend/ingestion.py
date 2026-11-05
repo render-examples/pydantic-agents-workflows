@@ -56,9 +56,7 @@ async def embed_documents(docs: list[Doc]) -> list[Doc]:
     return embedded
 
 
-async def replace_source(
-    source: str, docs: list[Doc], *, legacy: tuple[str, ...] = ()
-) -> int:
+async def replace_source(source: str, docs: list[Doc], *, legacy: tuple[str, ...] = ()) -> int:
     """Replace all rows for ``source`` (and any ``legacy`` sources) with ``docs``.
 
     Deletes existing rows for the canonical source plus any legacy sources it
@@ -68,9 +66,7 @@ async def replace_source(
     """
     async with vector_store.pool.acquire() as conn, conn.transaction():
         for src in (source, *legacy):
-            result = await conn.execute(
-                "DELETE FROM documents WHERE source = $1", src
-            )
+            result = await conn.execute("DELETE FROM documents WHERE source = $1", src)
             logfire.info(
                 "Cleared existing rows for source",
                 source=src,

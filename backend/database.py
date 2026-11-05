@@ -28,22 +28,17 @@ DEMO_COUNTERS_SCHEMA = """
 
 class VectorStore:
     """PostgreSQL vector store with pgvector extension."""
-    
+
     def __init__(self):
         self.pool: asyncpg.Pool | None = None
-    
+
     async def initialize(self):
         """Initialize the database connection pool and create tables."""
-        
+
         logfire.info("Initializing database connection pool")
-        
-        self.pool = await asyncpg.create_pool(
-            settings.database_url,
-            min_size=5,
-            max_size=20,
-            command_timeout=60
-        )
-        
+
+        self.pool = await asyncpg.create_pool(settings.database_url, min_size=5, max_size=20, command_timeout=60)
+
         # Create tables and enable pgvector. Serialize the schema DDL with a
         # transaction-scoped advisory lock: many instances may call initialize()
         # at once (the ingest_all fan-out runs an ingest_source per source on its
@@ -146,17 +141,13 @@ class VectorStore:
             # Migration: the pipeline is a single linear pass, so the
             # refinement-loop `iterations` column is unused. Drop it from
             # pre-existing deployments (idempotent; no-op on fresh tables).
-            await conn.execute(
-                "ALTER TABLE qa_sessions DROP COLUMN IF EXISTS iterations"
-            )
+            await conn.execute("ALTER TABLE qa_sessions DROP COLUMN IF EXISTS iterations")
 
             # Migration: history is scoped per anonymous browser client.
             # Add the owner column to pre-existing deployments (idempotent).
             # Rows with a NULL client_id are excluded from every client's
             # history, since history queries filter by equality.
-            await conn.execute(
-                "ALTER TABLE qa_sessions ADD COLUMN IF NOT EXISTS client_id TEXT"
-            )
+            await conn.execute("ALTER TABLE qa_sessions ADD COLUMN IF NOT EXISTS client_id TEXT")
 
             # Create index for recent sessions
             await conn.execute("""
@@ -192,24 +183,20 @@ class VectorStore:
             # POST /ask started, so only the caller who holds the token can
             # poll that run. `trace_id` lets the caller open the run's logs
             # without a saved session (demo mode saves no sessions).
-            await conn.execute(
-                "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS run_id TEXT"
-            )
-            await conn.execute(
-                "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS trace_id TEXT"
-            )
+            await conn.execute("ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS run_id TEXT")
+            await conn.execute("ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS trace_id TEXT")
 
             # Demo usage limit counters. See backend/demo.py.
             await conn.execute(DEMO_COUNTERS_SCHEMA)
 
         logfire.info("Database initialized successfully")
-    
+
     async def close(self):
         """Close the database connection pool."""
         if self.pool:
             await self.pool.close()
             logfire.info("Database connection pool closed")
-    
+
     async def insert_document(
         self,
         content: str,
@@ -217,72 +204,85 @@ class VectorStore:
         title: str,
         embedding: list[float],
         section: str | None = None,
-        metadata: dict | None = None
+        metadata: dict | None = None,
     ) -> int:
         """Insert a document with its embedding."""
-        
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         # Convert metadata dict to JSON string for JSONB column
         metadata_json = json.dumps(metadata or {})
-        
+
         # Convert embedding list to pgvector format string
-        embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-        
+        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+
         async with self.pool.acquire() as conn:
-            result = await conn.fetchrow("""
+            result = await conn.fetchrow(
+                """
                 INSERT INTO documents (content, source, title, section, metadata, embedding)
                 VALUES ($1, $2, $3, $4, $5::jsonb, $6::vector)
                 RETURNING id
-            """, content, source, title, section, metadata_json, embedding_str)
-            
-            return result['id']
-    
+            """,
+                content,
+                source,
+                title,
+                section,
+                metadata_json,
+                embedding_str,
+            )
+
+            return result["id"]
+
     async def insert_documents_batch(
-        self,
-        documents: list[tuple[str, str, str, list[float], str | None, dict]]
+        self, documents: list[tuple[str, str, str, list[float], str | None, dict]]
     ) -> list[int]:
         """Insert multiple documents in a batch."""
-        
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         # Use a transaction for batch insert
         async with self.pool.acquire() as conn, conn.transaction():
             ids = []
             for content, source, title, embedding, section, metadata in documents:
                 # Convert metadata dict to JSON string for JSONB column
                 metadata_json = json.dumps(metadata or {})
-                
+
                 # Convert embedding list to pgvector format string
-                embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-                
-                result = await conn.fetchrow("""
+                embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+
+                result = await conn.fetchrow(
+                    """
                     INSERT INTO documents (content, source, title, section, metadata, embedding)
                     VALUES ($1, $2, $3, $4, $5::jsonb, $6::vector)
                     RETURNING id
-                """, content, source, title, section, metadata_json, embedding_str)
-                ids.append(result['id'])
-            
+                """,
+                    content,
+                    source,
+                    title,
+                    section,
+                    metadata_json,
+                    embedding_str,
+                )
+                ids.append(result["id"])
+
             return ids
-    
+
     async def similarity_search(
-        self,
-        query_embedding: list[float],
-        k: int = 10,
-        threshold: float = 0.0
+        self, query_embedding: list[float], k: int = 10, threshold: float = 0.0
     ) -> list[Document]:
         """Search for similar documents using cosine similarity."""
-        
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         # Convert embedding list to pgvector format string
-        embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-        
+        embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch("""
+            rows = await conn.fetch(
+                """
                 SELECT 
                     content,
                     source,
@@ -294,68 +294,69 @@ class VectorStore:
                 WHERE 1 - (embedding <=> $1::vector) > $2
                 ORDER BY embedding <=> $1::vector
                 LIMIT $3
-            """, embedding_str, threshold, k)
-            
+            """,
+                embedding_str,
+                threshold,
+                k,
+            )
+
             documents = []
             for row in rows:
                 # Parse metadata if it's a string
-                metadata = row['metadata']
+                metadata = row["metadata"]
                 if isinstance(metadata, str):
                     metadata = json.loads(metadata)
-                
+
                 doc = Document(
-                    content=row['content'],
-                    source=row['source'],
-                    similarity_score=float(row['similarity_score']),
-                    metadata={
-                        'title': row['title'],
-                        'section': row['section'],
-                        **(metadata or {})
-                    }
+                    content=row["content"],
+                    source=row["source"],
+                    similarity_score=float(row["similarity_score"]),
+                    metadata={"title": row["title"], "section": row["section"], **(metadata or {})},
                 )
                 documents.append(doc)
-            
+
             return documents
-    
+
     async def hybrid_search(
         self,
         query_text: str,
         query_embedding: list[float],
         k: int = 10,
         threshold: float = 0.0,
-        bm25_weight: float = 0.5
+        bm25_weight: float = 0.5,
     ) -> list[Document]:
         """
         Hybrid search combining semantic (vector) and lexical (BM25) search.
-        
+
         Uses Reciprocal Rank Fusion (RRF) to combine results from both methods.
-        
+
         Args:
             query_text: The query text for BM25 search
             query_embedding: The query embedding for semantic search
             k: Number of final results to return
             threshold: Similarity threshold for semantic search
             bm25_weight: Weight for BM25 scores (0-1), semantic weight is (1 - bm25_weight)
-            
+
         Returns:
             List of documents ranked by combined RRF score
         """
-        
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         # Convert embedding list to pgvector format string
-        embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-        
+        embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+
         # Pass raw query text; plainto_tsquery handles tokenization and strips special chars
         tsquery = query_text
-        
+
         async with self.pool.acquire() as conn:
             # Fetch more results from each method to ensure good coverage
             fetch_k = k * 3
-            
+
             # 1. Semantic search results
-            semantic_rows = await conn.fetch("""
+            semantic_rows = await conn.fetch(
+                """
                 SELECT 
                     id,
                     content,
@@ -368,10 +369,15 @@ class VectorStore:
                 WHERE 1 - (embedding <=> $1::vector) > $2
                 ORDER BY embedding <=> $1::vector
                 LIMIT $3
-            """, embedding_str, threshold, fetch_k)
-            
+            """,
+                embedding_str,
+                threshold,
+                fetch_k,
+            )
+
             # 2. BM25 (full-text) search results
-            bm25_rows = await conn.fetch("""
+            bm25_rows = await conn.fetch(
+                """
                 SELECT 
                     id,
                     content,
@@ -385,47 +391,51 @@ class VectorStore:
                 WHERE content_tsv @@ query
                 ORDER BY bm25_score DESC
                 LIMIT $2
-            """, tsquery, fetch_k)
-            
+            """,
+                tsquery,
+                fetch_k,
+            )
+
             logfire.debug(
                 "Hybrid search results",
                 semantic_count=len(semantic_rows),
                 bm25_count=len(bm25_rows),
-                query_text=query_text
+                query_text=query_text,
             )
-            
+
             # 3. Combine using Reciprocal Rank Fusion (RRF)
             # RRF formula: score = sum(1 / (k + rank)) for each method
             # k is usually set to 60
             rrf_k = 60
             doc_scores = {}  # doc_id -> (combined_score, doc_data)
-            
+
             # Add semantic search rankings
             for rank, row in enumerate(semantic_rows, start=1):
-                doc_id = row['id']
+                doc_id = row["id"]
                 semantic_rrf = 1.0 / (rrf_k + rank)
 
                 if doc_id not in doc_scores:
                     doc_scores[doc_id] = {
-                        'semantic_rrf': 0.0,
-                        'bm25_rrf': 0.0,
+                        "semantic_rrf": 0.0,
+                        "bm25_rrf": 0.0,
                         # Carry the true cosine similarity (0-1) so it stays interpretable;
                         # RRF below is used only for *ordering*, never as the returned score.
-                        'cosine': float(row['similarity_score']),
-                        'row': row
+                        "cosine": float(row["similarity_score"]),
+                        "row": row,
                     }
 
-                doc_scores[doc_id]['semantic_rrf'] = semantic_rrf
-            
+                doc_scores[doc_id]["semantic_rrf"] = semantic_rrf
+
             # Add BM25 search rankings
             for rank, row in enumerate(bm25_rows, start=1):
-                doc_id = row['id']
+                doc_id = row["id"]
                 bm25_rrf = 1.0 / (rrf_k + rank)
-                
+
                 if doc_id not in doc_scores:
                     # This doc was in BM25 but not semantic results
                     # Fetch the semantic score for it
-                    semantic_row = await conn.fetchrow("""
+                    semantic_row = await conn.fetchrow(
+                        """
                         SELECT
                             id,
                             content,
@@ -436,29 +446,29 @@ class VectorStore:
                             1 - (embedding <=> $1::vector) as similarity_score
                         FROM documents
                         WHERE id = $2
-                    """, embedding_str, doc_id)
+                    """,
+                        embedding_str,
+                        doc_id,
+                    )
 
                     doc_scores[doc_id] = {
-                        'semantic_rrf': 0.0,
-                        'bm25_rrf': 0.0,
+                        "semantic_rrf": 0.0,
+                        "bm25_rrf": 0.0,
                         # A BM25-only hit's cosine may be low; if we can't fetch it, 0.0
                         # keeps it out of the relevance gate below.
-                        'cosine': float(semantic_row['similarity_score']) if semantic_row else 0.0,
-                        'row': semantic_row or row
+                        "cosine": float(semantic_row["similarity_score"]) if semantic_row else 0.0,
+                        "row": semantic_row or row,
                     }
 
-                doc_scores[doc_id]['bm25_rrf'] = bm25_rrf
-            
+                doc_scores[doc_id]["bm25_rrf"] = bm25_rrf
+
             # Combine scores with weights (RRF is used only to ORDER the fused set)
             ranked_docs = []
             for scores in doc_scores.values():
                 # Weighted RRF combination
-                combined_score = (
-                    (1 - bm25_weight) * scores['semantic_rrf'] +
-                    bm25_weight * scores['bm25_rrf']
-                )
+                combined_score = (1 - bm25_weight) * scores["semantic_rrf"] + bm25_weight * scores["bm25_rrf"]
 
-                ranked_docs.append((combined_score, scores['cosine'], scores['row']))
+                ranked_docs.append((combined_score, scores["cosine"], scores["row"]))
 
             # Relevance gate: keep only docs whose cosine similarity clears the
             # threshold. This is applied to the FINAL set (not just the semantic
@@ -475,19 +485,15 @@ class VectorStore:
             documents = []
             for _, cosine, row in gated[:k]:
                 # Parse metadata if it's a string
-                metadata = row['metadata']
+                metadata = row["metadata"]
                 if isinstance(metadata, str):
                     metadata = json.loads(metadata)
 
                 doc = Document(
-                    content=row['content'],
-                    source=row['source'],
+                    content=row["content"],
+                    source=row["source"],
                     similarity_score=float(cosine),
-                    metadata={
-                        'title': row['title'],
-                        'section': row['section'],
-                        **(metadata or {})
-                    }
+                    metadata={"title": row["title"], "section": row["section"], **(metadata or {})},
                 )
                 documents.append(doc)
 
@@ -497,47 +503,47 @@ class VectorStore:
                 passed_threshold=len(gated),
                 final_count=len(documents),
                 threshold=threshold,
-                top_score=documents[0].similarity_score if documents else 0.0
+                top_score=documents[0].similarity_score if documents else 0.0,
             )
 
             return documents
-    
+
     async def get_document_count(self) -> int:
         """Get the total number of documents in the database."""
-        
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         async with self.pool.acquire() as conn:
             result = await conn.fetchrow("SELECT COUNT(*) FROM documents")
-            return result['count']
-    
+            return result["count"]
+
     async def delete_all_documents(self):
         """Delete all documents (useful for testing)."""
-        
+
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
-        
+
         async with self.pool.acquire() as conn:
             await conn.execute("DELETE FROM documents")
-        
+
         logfire.info("All documents deleted")
-    
+
     async def health_check(self) -> bool:
         """Check if database connection is healthy."""
-        
+
         try:
             if not self.pool:
                 return False
-            
+
             async with self.pool.acquire() as conn:
                 await conn.fetchval("SELECT 1")
-            
+
             return True
         except Exception as e:  # noqa: BLE001 - Any error means the database is not healthy.
             logfire.error(f"Database health check failed: {e}")
             return False
-    
+
     async def save_session(
         self,
         question: str,
@@ -550,7 +556,7 @@ class VectorStore:
         total_duration_ms: float,
         trace_id: str | None = None,
         stages: list | None = None,
-        client_id: str | None = None
+        client_id: str | None = None,
     ) -> str:
         """Save a Q&A session to the database."""
 
@@ -564,17 +570,28 @@ class VectorStore:
         stages_json = json.dumps(stages or [])
 
         async with self.pool.acquire() as conn:
-            result = await conn.fetchrow("""
+            result = await conn.fetchrow(
+                """
                 INSERT INTO qa_sessions
                 (question, answer, sources, claims, evaluations, quality_score,
                  total_cost, total_duration_ms, trace_id, stages, client_id)
                 VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10::jsonb, $11)
                 RETURNING id
-            """, question, answer, sources_json, claims_json, evaluations_json,
-                quality_score, total_cost, total_duration_ms, trace_id, stages_json,
-                client_id)
-            
-            session_id = str(result['id'])
+            """,
+                question,
+                answer,
+                sources_json,
+                claims_json,
+                evaluations_json,
+                quality_score,
+                total_cost,
+                total_duration_ms,
+                trace_id,
+                stages_json,
+                client_id,
+            )
+
+            session_id = str(result["id"])
             logfire.info(f"Saved Q&A session: {session_id}", trace_id=trace_id)
             return session_id
 
@@ -592,15 +609,17 @@ class VectorStore:
 
         updates_json = json.dumps(updates)
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO pipeline_progress (token, updates, updated_at)
                 VALUES ($1, $2::jsonb, NOW())
                 ON CONFLICT (token) DO UPDATE
                 SET updates = EXCLUDED.updates, updated_at = NOW()
-            """, token, updates_json)
-            await conn.execute(
-                "DELETE FROM pipeline_progress WHERE updated_at < NOW() - INTERVAL '1 day'"
+            """,
+                token,
+                updates_json,
             )
+            await conn.execute("DELETE FROM pipeline_progress WHERE updated_at < NOW() - INTERVAL '1 day'")
 
     async def record_run(self, token: str, run_id: str) -> None:
         """Save the run ID that POST /ask started under ``token``."""
@@ -608,12 +627,16 @@ class VectorStore:
             raise RuntimeError("Database pool not initialized")
 
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO pipeline_progress (token, run_id, updated_at)
                 VALUES ($1, $2, NOW())
                 ON CONFLICT (token) DO UPDATE
                 SET run_id = EXCLUDED.run_id, updated_at = NOW()
-            """, token, run_id)
+            """,
+                token,
+                run_id,
+            )
 
     async def record_trace(self, token: str, trace_id: str) -> None:
         """Save the Logfire trace ID of the run that writes under ``token``."""
@@ -621,12 +644,16 @@ class VectorStore:
             return
 
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO pipeline_progress (token, trace_id, updated_at)
                 VALUES ($1, $2, NOW())
                 ON CONFLICT (token) DO UPDATE
                 SET trace_id = EXCLUDED.trace_id, updated_at = NOW()
-            """, token, trace_id)
+            """,
+                token,
+                trace_id,
+            )
 
     async def get_run(self, token: str, run_id: str) -> dict | None:
         """Return the progress row only if ``token`` belongs to ``run_id``.
@@ -640,7 +667,8 @@ class VectorStore:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT updates, trace_id FROM pipeline_progress WHERE token = $1 AND run_id = $2",
-                token, run_id,
+                token,
+                run_id,
             )
         if not row:
             return None
@@ -660,7 +688,8 @@ class VectorStore:
             raise RuntimeError("Database pool not initialized")
 
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch("""
+            rows = await conn.fetch(
+                """
                 SELECT
                     id, question, answer, sources, claims, evaluations,
                     quality_score, total_cost, total_duration_ms,
@@ -669,26 +698,29 @@ class VectorStore:
                 WHERE client_id = $1
                 ORDER BY created_at DESC
                 LIMIT $2
-            """, client_id, limit)
-            
+            """,
+                client_id,
+                limit,
+            )
+
             sessions = []
             for row in rows:
                 session = dict(row)
-                session['id'] = str(session['id'])
-                session['created_at'] = session['created_at'].isoformat()
+                session["id"] = str(session["id"])
+                session["created_at"] = session["created_at"].isoformat()
                 # Parse JSONB fields back to Python objects
-                if isinstance(session['sources'], str):
-                    session['sources'] = json.loads(session['sources'])
-                if isinstance(session['claims'], str):
-                    session['claims'] = json.loads(session['claims'])
-                if isinstance(session['evaluations'], str):
-                    session['evaluations'] = json.loads(session['evaluations'])
-                if isinstance(session['stages'], str):
-                    session['stages'] = json.loads(session['stages'])
+                if isinstance(session["sources"], str):
+                    session["sources"] = json.loads(session["sources"])
+                if isinstance(session["claims"], str):
+                    session["claims"] = json.loads(session["claims"])
+                if isinstance(session["evaluations"], str):
+                    session["evaluations"] = json.loads(session["evaluations"])
+                if isinstance(session["stages"], str):
+                    session["stages"] = json.loads(session["stages"])
                 sessions.append(session)
-            
+
             return sessions
-    
+
     async def get_session_by_id(self, session_id: str, client_id: str) -> dict | None:
         """Get a Q&A session by ID, scoped to its owning client.
 
@@ -701,33 +733,37 @@ class VectorStore:
             raise RuntimeError("Database pool not initialized")
 
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow("""
+            row = await conn.fetchrow(
+                """
                 SELECT
                     id, question, answer, sources, claims, evaluations,
                     quality_score, total_cost, total_duration_ms,
                     created_at, trace_id, stages
                 FROM qa_sessions
                 WHERE id = $1 AND client_id = $2
-            """, session_id, client_id)
-            
+            """,
+                session_id,
+                client_id,
+            )
+
             if not row:
                 return None
-            
+
             session = dict(row)
-            session['id'] = str(session['id'])
-            session['created_at'] = session['created_at'].isoformat()
+            session["id"] = str(session["id"])
+            session["created_at"] = session["created_at"].isoformat()
             # Parse JSONB fields back to Python objects
-            if isinstance(session['sources'], str):
-                session['sources'] = json.loads(session['sources'])
-            if isinstance(session['claims'], str):
-                session['claims'] = json.loads(session['claims'])
-            if isinstance(session['evaluations'], str):
-                session['evaluations'] = json.loads(session['evaluations'])
-            if isinstance(session['stages'], str):
-                session['stages'] = json.loads(session['stages'])
-            
+            if isinstance(session["sources"], str):
+                session["sources"] = json.loads(session["sources"])
+            if isinstance(session["claims"], str):
+                session["claims"] = json.loads(session["claims"])
+            if isinstance(session["evaluations"], str):
+                session["evaluations"] = json.loads(session["evaluations"])
+            if isinstance(session["stages"], str):
+                session["stages"] = json.loads(session["stages"])
+
             return session
-    
+
     async def delete_session(self, session_id: str, client_id: str) -> bool:
         """Delete a specific Q&A session by ID, scoped to its owning client.
 
@@ -739,13 +775,17 @@ class VectorStore:
             raise RuntimeError("Database pool not initialized")
 
         async with self.pool.acquire() as conn:
-            result = await conn.execute("""
+            result = await conn.execute(
+                """
                 DELETE FROM qa_sessions
                 WHERE id = $1 AND client_id = $2
-            """, session_id, client_id)
+            """,
+                session_id,
+                client_id,
+            )
 
             # Check if any row was deleted
-            deleted = result.split()[-1] != '0'
+            deleted = result.split()[-1] != "0"
 
             if deleted:
                 logfire.info(f"Deleted session: {session_id}")
@@ -759,9 +799,7 @@ class VectorStore:
             raise RuntimeError("Database pool not initialized")
 
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "DELETE FROM qa_sessions WHERE client_id = $1", client_id
-            )
+            result = await conn.execute("DELETE FROM qa_sessions WHERE client_id = $1", client_id)
             deleted_count = int(result.split()[-1])
 
             logfire.info(f"Deleted all sessions for client: {deleted_count} total")
@@ -771,5 +809,3 @@ class VectorStore:
 
 # Global vector store instance
 vector_store = VectorStore()
-
-

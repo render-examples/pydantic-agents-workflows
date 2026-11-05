@@ -64,7 +64,7 @@ def chunk_document(
             bounded_segments.append(segment)
         else:
             for start in range(0, len(segment), max_chars):
-                bounded_segments.append(segment[start:start + max_chars])
+                bounded_segments.append(segment[start : start + max_chars])
 
     docs: list[dict] = []
     current_chunk: list[str] = []

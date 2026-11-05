@@ -59,9 +59,7 @@ def test_cors_comma_list_and_json_list():
         "http://localhost:3000",
         "https://a.example.com",
     ]
-    assert make(cors_origins='["http://localhost:3000"]').cors_origins == [
-        "http://localhost:3000"
-    ]
+    assert make(cors_origins='["http://localhost:3000"]').cors_origins == ["http://localhost:3000"]
 
 
 def test_cors_default_is_local_frontend():

@@ -18,20 +18,19 @@ _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 async def fetch_logfire_logs(trace_id: str) -> dict:
     """
     Fetch logs from Logfire API for a specific trace ID.
-    
+
     Args:
         trace_id: The OpenTelemetry trace ID (32-char hex string)
-        
+
     Returns:
         Dictionary containing the logs data from Logfire
-        
+
     Raises:
         HTTPException: If the API request fails or auth is missing
     """
     if not settings.logfire_read_token:
         raise HTTPException(
-            status_code=501,
-            detail="Logfire read token not configured. Set LOGFIRE_READ_TOKEN environment variable."
+            status_code=501, detail="Logfire read token not configured. Set LOGFIRE_READ_TOKEN environment variable."
         )
 
     if not _TRACE_ID_RE.match(trace_id):
@@ -59,9 +58,7 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
 
     # The Query API requires min_timestamp and applies its own row limit
     # (default 100), independent of the SQL LIMIT.
-    min_timestamp = (
-        datetime.now(UTC) - timedelta(days=settings.logfire_query_window_days)
-    ).isoformat()
+    min_timestamp = (datetime.now(UTC) - timedelta(days=settings.logfire_query_window_days)).isoformat()
     body = {
         "sql": query,
         "min_timestamp": min_timestamp,
@@ -76,11 +73,7 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{settings.logfire_api_base}/v2/query",
-                json=body,
-                headers=headers
-            )
+            response = await client.post(f"{settings.logfire_api_base}/v2/query", json=body, headers=headers)
 
             if response.status_code == 401:
                 raise HTTPException(status_code=401, detail="Invalid Logfire read token")
@@ -105,22 +98,14 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
                     num_rows = len(columns[0].get("values", []))
                     for i in range(num_rows):
                         row = {
-                            col.get("name"): (
-                                col.get("values", [])[i]
-                                if i < len(col.get("values", []))
-                                else None
-                            )
+                            col.get("name"): (col.get("values", [])[i] if i < len(col.get("values", [])) else None)
                             for col in columns
                         }
                         rows.append(row)
 
             logfire.info(f"Fetched {len(rows)} log records for trace {trace_id}")
 
-            return {
-                "trace_id": trace_id,
-                "logs": rows,
-                "record_count": len(rows)
-            }
+            return {"trace_id": trace_id, "logs": rows, "record_count": len(rows)}
 
     except httpx.TimeoutException as e:
         logfire.error(f"Timeout fetching logs for trace {trace_id}")

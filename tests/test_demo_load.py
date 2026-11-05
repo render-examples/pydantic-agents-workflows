@@ -54,18 +54,16 @@ def run_burst(monkeypatch, pool):
 
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            responses = await asyncio.gather(*(
-                client.post("/ask", json=QUESTION, headers={"CF-Connecting-IP": ip}) for ip in ips
-            ))
+            responses = await asyncio.gather(
+                *(client.post("/ask", json=QUESTION, headers={"CF-Connecting-IP": ip}) for ip in ips)
+            )
         return Counter(r.status_code for r in responses), responses, workflows
 
     return run
 
 
 async def _count(pool, key_part: str) -> int:
-    return await pool.fetchval(
-        "SELECT COALESCE(SUM(count), 0) FROM demo_counters WHERE key LIKE $1", f"%{key_part}%"
-    )
+    return await pool.fetchval("SELECT COALESCE(SUM(count), 0) FROM demo_counters WHERE key LIKE $1", f"%{key_part}%")
 
 
 async def test_one_visitor_burst_gets_only_the_per_minute_limit(run_burst, pool):

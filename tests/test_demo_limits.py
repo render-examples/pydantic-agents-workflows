@@ -76,9 +76,7 @@ async def test_ip_is_hashed_in_keys(pool):
 
 async def test_concurrent_requests_get_different_counts(pool):
     limits = Limits(per_minute=0, per_visitor=10, daily=0)
-    results = await asyncio.gather(
-        reserve(pool, IP, limits, now=10.0), reserve(pool, IP, limits, now=10.0)
-    )
+    results = await asyncio.gather(reserve(pool, IP, limits, now=10.0), reserve(pool, IP, limits, now=10.0))
     assert sorted(r.remaining for r in results) == [8, 9]
 
 
