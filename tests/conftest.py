@@ -17,11 +17,14 @@ from backend.database import DEMO_COUNTERS_SCHEMA
 
 @pytest.fixture
 async def pool():
-    """A pool for the demo limit tests. Skip the test if TEST_DATABASE_URL is not set."""
+    """A pool for the demo limit tests. Skip the test if TEST_DATABASE_URL is not set.
+
+    The pool is large enough for the load tests to run many transactions at once.
+    """
     url = os.environ.get("TEST_DATABASE_URL")
     if not url:
         pytest.skip("TEST_DATABASE_URL is not set")
-    pool = await asyncpg.create_pool(url, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(url, min_size=1, max_size=20)
     await pool.execute(DEMO_COUNTERS_SCHEMA)
     await pool.execute("TRUNCATE demo_counters")
     yield pool
