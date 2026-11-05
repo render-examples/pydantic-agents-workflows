@@ -13,6 +13,7 @@ from backend.observability import (
     usage_and_cost,
 )
 from backend.pipeline._agents import anthropic_agent, openai_agent
+from backend.workflows_app import model_request_workflows
 
 
 EVALUATION_INSTRUCTIONS = """You are a quality evaluator for technical documentation answers.
@@ -38,11 +39,19 @@ Scoring criteria:
 - feedback: 1-2 sentences of constructive feedback."""
 
 _openai_eval_agent = openai_agent(
-    settings.eval_model_openai, EVALUATION_INSTRUCTIONS, output_type=EvaluationOutput
+    "eval_openai",
+    settings.eval_model_openai,
+    EVALUATION_INSTRUCTIONS,
+    output_type=EvaluationOutput,
+    capabilities=[model_request_workflows(timeout_seconds=60)],
 )
 
 _anthropic_eval_agent = anthropic_agent(
-    settings.eval_model_anthropic, EVALUATION_INSTRUCTIONS, output_type=EvaluationOutput
+    "eval_anthropic",
+    settings.eval_model_anthropic,
+    EVALUATION_INSTRUCTIONS,
+    output_type=EvaluationOutput,
+    capabilities=[model_request_workflows(timeout_seconds=60)],
 )
 
 

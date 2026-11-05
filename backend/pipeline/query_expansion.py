@@ -43,6 +43,7 @@ Output: {"queries": ["What are the Postgres instance types and pricing?", "What 
 """
 
 _query_expansion_agent = openai_agent(
+    "query_expansion",
     settings.query_expansion_model, QUERY_EXPANSION_INSTRUCTIONS, output_type=QueryExpansionOutput
 )
 

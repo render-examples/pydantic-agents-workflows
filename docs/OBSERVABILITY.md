@@ -216,6 +216,14 @@ user_session.qa_request                    [4.2s, $0.08]
 - **Cost attribution** - Where money is spent
 - **Bottleneck identification** - Which stages are slow
 
+### Spans from Chained Task Runs
+
+The agents for answer generation, claims extraction, accuracy, and both quality judges send each model request to a chained Render task run, such as `answer__model.request`. The `RenderWorkflows` capability does not pass the parent span context to chained runs. Spans created inside a chained run, including the model request spans from `logfire.instrument_pydantic_ai()`, start their own traces.
+
+The stored trace still has the stage spans, the agent run spans, and the retrieval spans. The logs panel reads one trace ID, so it may not show the model request spans. To see them, open the chained run's logs in the Render Dashboard, or search Logfire by time and model name.
+
+If spans from chained runs do not reach Logfire, set `OTEL_BSP_SCHEDULE_DELAY` to a low value, such as `500`, on the Workflows service. `flush_on_exit` cannot wrap the generated tasks.
+
 ---
 
 ## SQL Queries

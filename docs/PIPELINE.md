@@ -30,9 +30,13 @@ hard-coded into the generation instructions.
 
 The stage logic below lives in [`backend/pipeline/`](../backend/pipeline/).
 In production it executes as a **Render Workflows** run: the `run_qa_pipeline` orchestrator
-([`workflows/app.py`](../workflows/app.py)) keeps the cheap stages (1, 2) in-process and
-promotes the heavy LLM stages (3, 4, 5) to their own retried subtasks, with stages 6 + 7
-running as three concurrent subtasks on separate instances. See the
+([`workflows/app.py`](../workflows/app.py)) calls every stage function inside the orchestrator process.
+The agents for stages 3, 4, 6, and 7 have a `RenderWorkflows` capability, so each of their
+model requests runs as a chained task run with its own retries and timeout. The three model
+requests of stages 6 and 7 run at the same time on separate instances. Stages 1, 2, and 5 run
+in the orchestrator. Only a failed model request retries on its own. Other failures, such as
+invalid structured output or an error in claim verification, fail the orchestrator task, and
+Render runs it again from stage 1. See the
 [Architecture section of the README](../README.md#architecture) for the topology.
 
 ---

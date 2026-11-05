@@ -844,6 +844,7 @@ dependencies = [
     { name = "pgvector" },
     { name = "pydantic" },
     { name = "pydantic-ai" },
+    { name = "pydantic-ai-harness", extra = ["render"] },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
@@ -877,6 +878,7 @@ requires-dist = [
     { name = "pgvector", specifier = ">=0.5.1" },
     { name = "pydantic", specifier = ">=2.14.2" },
     { name = "pydantic-ai", specifier = ">=2.66.0" },
+    { name = "pydantic-ai-harness", extras = ["render"], specifier = ">=0.66.0" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "python-multipart", specifier = ">=0.0.33" },
@@ -1490,6 +1492,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3a/df/c772b2e6ef546f199bad0d053b188faba942e133bff35c00eb9bf73cf57f/pydantic_ai-2.66.0.tar.gz", hash = "sha256:fac21eca85961e7b001353b65fa00b05ccdbff5615b01892a19f90abbb31a42b", size = 31760, upload-time = "2026-11-04T10:28:53.163Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/79/e2/9435e3a56c47969be98caf212b51ecee7c9d1aea1ed78f72597a3705398d/pydantic_ai-2.66.0-py3-none-any.whl", hash = "sha256:450d9bcaea3e224348855c05bc0b0ece5653cb77a7d8cd0980991fdb22c31bfd", size = 10614, upload-time = "2026-11-04T10:28:38.51Z" },
+]
+
+[[package]]
+name = "pydantic-ai-harness"
+version = "0.66.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "genai-prices" },
+    { name = "httpx" },
+    { name = "pydantic-ai-slim" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c8/28/96e1ac69852614c1c993ca352000f0f8e381bbc9656802a16864a5c2d897/pydantic_ai_harness-0.66.0.tar.gz", hash = "sha256:d646caf7cf0f83ced707d88dbc387bd73f3ff78cd6e34722665cf527dcfe6674", size = 1504421, upload-time = "2026-11-04T10:28:55.84Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/1b/d3a4e0941226a88f54e17fbb80b7190b752154329d6681a465ae101b4706/pydantic_ai_harness-0.66.0-py3-none-any.whl", hash = "sha256:d98e2e8c57dd34560ad0a83c5611d9b57c30c7572f2bde276d3b99c4d99ab025", size = 1838626, upload-time = "2026-11-04T10:28:42.148Z" },
+]
+
+[package.optional-dependencies]
+render = [
+    { name = "render" },
 ]
 
 [[package]]
