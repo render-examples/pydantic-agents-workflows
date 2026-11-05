@@ -452,7 +452,7 @@ class VectorStore:
             
             # Combine scores with weights (RRF is used only to ORDER the fused set)
             ranked_docs = []
-            for doc_id, scores in doc_scores.items():
+            for scores in doc_scores.values():
                 # Weighted RRF combination
                 combined_score = (
                     (1 - bm25_weight) * scores['semantic_rrf'] +
@@ -474,7 +474,7 @@ class VectorStore:
 
             # Convert to Document objects, reporting the interpretable cosine score.
             documents = []
-            for combined_score, cosine, row in gated[:k]:
+            for _, cosine, row in gated[:k]:
                 # Parse metadata if it's a string
                 metadata = row['metadata']
                 if isinstance(metadata, str):

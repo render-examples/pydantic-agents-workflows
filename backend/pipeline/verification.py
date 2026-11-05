@@ -140,7 +140,7 @@ async def verify_claims(claims: list[str]) -> dict:
 
     # Verify all claims in parallel: retrieve candidate passages, then LLM entailment.
     results = await asyncio.gather(*[
-        _verify_claim_with_embedding(c, e) for c, e in zip(claims, embeddings)
+        _verify_claim_with_embedding(c, e) for c, e in zip(claims, embeddings, strict=True)
     ])
     verified_claims: list[Claim] = [r[0] for r in results]
 

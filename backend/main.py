@@ -158,7 +158,7 @@ async def ask_question(request: QuestionRequest, http_request: Request):
             )
         except (LimiterUnavailable, asyncpg.PostgresError, OSError) as e:  # Fail closed if the database is down.
             logfire.error("Demo limiter unavailable", error=str(e), exc_info=True)
-            raise _demo_unavailable()
+            raise _demo_unavailable() from e
 
     with logfire.span(
         "user_session.qa_request",
@@ -188,7 +188,7 @@ async def ask_question(request: QuestionRequest, http_request: Request):
                     await release(get_pool(), reservation)
                 except Exception as release_error:  # noqa: BLE001
                     logfire.error("Failed to release demo question", error=str(release_error))
-            raise HTTPException(status_code=502, detail="Failed to start pipeline")
+            raise HTTPException(status_code=502, detail="Failed to start pipeline") from e
 
         logfire.info(
             "Triggered Q&A workflow run",
@@ -222,7 +222,7 @@ async def get_answer(run_id: str, progress_token: ProgressToken):
         details = await get_render().workflows.get_task_run(run_id)
     except RenderError as e:
         logfire.error("Failed to read workflow run", run_id=run_id, error=str(e), exc_info=True)
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(status_code=404, detail="Run not found") from e
 
     status = details.status.value if hasattr(details.status, "value") else details.status
 

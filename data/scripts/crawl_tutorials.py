@@ -16,12 +16,10 @@ pages and chunk counts without generating embeddings.
 
 import asyncio
 import re
-from typing import Dict, List, Set
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-
 from chunking import chunk_document
 
 BASE_URL = "https://render.com"
@@ -30,12 +28,12 @@ INDEX_URL = f"{BASE_URL}/tutorials"
 # Already curated by the `workflows_tutorial` source (data/sources.py), which
 # deletes-by-source and reinserts after ingest — crawling it here would just be
 # overwritten.
-EXCLUDE_SOURCES: Set[str] = {
+EXCLUDE_SOURCES: set[str] = {
     "https://render.com/tutorials/agents-on-render-workflows/what-youll-build",
 }
 
 # Low-value, non-instructional sub-pages to skip (matched against the final path segment).
-SKIP_SLUGS: Set[str] = {
+SKIP_SLUGS: set[str] = {
     "share-your-feedback",
 }
 
@@ -65,10 +63,10 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> str | None:
         return None
 
 
-def _extract_links(html: str, predicate) -> Set[str]:
+def _extract_links(html: str, predicate) -> set[str]:
     """Return the set of normalized /tutorials/... paths whose path matches predicate."""
     soup = BeautifulSoup(html, "lxml")
-    paths: Set[str] = set()
+    paths: set[str] = set()
     for anchor in soup.find_all("a", href=True):
         href = anchor["href"]
         # Only consider on-site tutorial links.
@@ -105,7 +103,7 @@ def _extract_content(html: str) -> tuple[str, str]:
     return title, "\n".join(lines)
 
 
-async def _discover_pages(client: httpx.AsyncClient) -> List[str]:
+async def _discover_pages(client: httpx.AsyncClient) -> list[str]:
     """Return the full list of tutorial page paths (overviews + sub-pages)."""
     print(f"📡 Fetching tutorials index {INDEX_URL}...")
     index_html = await _fetch(client, INDEX_URL)
@@ -116,7 +114,7 @@ async def _discover_pages(client: httpx.AsyncClient) -> List[str]:
     overviews = sorted(_extract_links(index_html, OVERVIEW_RE.match))
     print(f"📄 Found {len(overviews)} tutorial overview pages")
 
-    pages: Set[str] = set(overviews)
+    pages: set[str] = set(overviews)
 
     async def collect_subpages(overview_path: str) -> None:
         slug = overview_path.split("/")[2]  # /tutorials/<slug>
@@ -150,7 +148,7 @@ async def _discover_pages(client: httpx.AsyncClient) -> List[str]:
     return result
 
 
-async def fetch_tutorial_index() -> List[Dict]:
+async def fetch_tutorial_index() -> list[dict]:
     """Return [{title, url}] for each tutorial overview linked from the index page."""
     async with httpx.AsyncClient(
         timeout=REQUEST_TIMEOUT, follow_redirects=True
@@ -160,13 +158,11 @@ async def fetch_tutorial_index() -> List[Dict]:
         return []
 
     soup = BeautifulSoup(html, "lxml")
-    seen: Set[str] = set()
-    tutorials: List[Dict] = []
+    seen: set[str] = set()
+    tutorials: list[dict] = []
     for anchor in soup.find_all("a", href=True):
         href = anchor["href"]
-        if href.startswith(BASE_URL):
-            path = _normalize_path(href)
-        elif href.startswith("/"):
+        if href.startswith((BASE_URL, "/")):
             path = _normalize_path(href)
         else:
             continue
@@ -180,7 +176,7 @@ async def fetch_tutorial_index() -> List[Dict]:
     return tutorials
 
 
-async def fetch_tutorial_docs() -> List[Dict]:
+async def fetch_tutorial_docs() -> list[dict]:
     """Crawl all tutorials + sub-pages and return chunked doc dicts."""
     async with httpx.AsyncClient(
         timeout=REQUEST_TIMEOUT, follow_redirects=True
@@ -190,7 +186,7 @@ async def fetch_tutorial_docs() -> List[Dict]:
 
         sem = asyncio.Semaphore(CONCURRENCY)
 
-        async def crawl_page(path: str) -> List[Dict]:
+        async def crawl_page(path: str) -> list[dict]:
             source = urljoin(BASE_URL, path)
             async with sem:
                 html = await _fetch(client, source)
@@ -216,7 +212,7 @@ async def fetch_tutorial_docs() -> List[Dict]:
 
 async def _main() -> None:
     docs = await fetch_tutorial_docs()
-    by_source: Dict[str, int] = {}
+    by_source: dict[str, int] = {}
     for doc in docs:
         by_source[doc["source"]] = by_source.get(doc["source"], 0) + 1
     print("\n" + "=" * 70)

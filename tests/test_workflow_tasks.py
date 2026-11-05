@@ -65,8 +65,16 @@ _DOC = Document(content="Web services listen on PORT.", source="https://render.c
         (generation._answer_agent, lambda: generation.generate_answer("Q?", [_DOC]), "answer__model.request"),
         (claims._claims_agent, lambda: claims.extract_claims("A."), "claims__model.request"),
         (accuracy._accuracy_agent, lambda: accuracy.check_accuracy("A.", []), "accuracy__model.request"),
-        (evaluation._openai_eval_agent, lambda: evaluation.evaluate_with_openai("Q?", "A.", 1), "eval_openai__model.request"),
-        (evaluation._anthropic_eval_agent, lambda: evaluation.evaluate_with_anthropic("Q?", "A.", 1), "eval_anthropic__model.request"),
+        (
+            evaluation._openai_eval_agent,
+            lambda: evaluation.evaluate_with_openai("Q?", "A.", 1),
+            "eval_openai__model.request",
+        ),
+        (
+            evaluation._anthropic_eval_agent,
+            lambda: evaluation.evaluate_with_anthropic("Q?", "A.", 1),
+            "eval_anthropic__model.request",
+        ),
     ],
 )
 async def test_heavy_stage_sends_model_request_to_chained_run(monkeypatch, agent, run, task_name):

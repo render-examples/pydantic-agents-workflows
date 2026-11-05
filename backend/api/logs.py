@@ -122,9 +122,9 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
                 "record_count": len(rows)
             }
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         logfire.error(f"Timeout fetching logs for trace {trace_id}")
-        raise HTTPException(status_code=504, detail="Logfire API timeout")
+        raise HTTPException(status_code=504, detail="Logfire API timeout") from e
     except httpx.RequestError as e:
         logfire.error(f"Error fetching logs for trace {trace_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail="Failed to connect to Logfire API")
+        raise HTTPException(status_code=502, detail="Failed to connect to Logfire API") from e

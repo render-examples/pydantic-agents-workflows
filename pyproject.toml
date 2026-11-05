@@ -44,6 +44,19 @@ dev = [
     "ruff>=0.17.3",
 ]
 
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# load_dotenv() must run before the app imports read the environment.
+"backend/main.py" = ["E402"]
+# Prompt text and source data, which line wrapping would change.
+"backend/pipeline/*.py" = ["E501"]
+"data/sources.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

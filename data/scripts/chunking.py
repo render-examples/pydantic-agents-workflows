@@ -7,7 +7,6 @@ the bulk-docs corpus and the tutorials crawl chunk content identically.
 """
 
 import re
-from typing import Dict, List, Optional
 
 MAX_CHUNK_CHARS = 2000
 MIN_CHUNK_CHARS = 100
@@ -21,11 +20,11 @@ _HEADING_RE = re.compile(r"(?m)^(#{2,3}\s+.*)$")
 
 def chunk_document(
     title: str,
-    section: Optional[str],
+    section: str | None,
     source: str,
     content: str,
     max_chars: int = MAX_CHUNK_CHARS,
-) -> List[Dict]:
+) -> list[dict]:
     """Split content into chunks of ~max_chars, splitting at paragraph boundaries.
 
     Returns a list of doc dicts. Content shorter than MIN_CHUNK_CHARS yields no
@@ -39,7 +38,7 @@ def chunk_document(
     display_title = title if not section else f"{title} - {section}"
     display_section = section or title
 
-    def _doc(chunk_content: str) -> Dict:
+    def _doc(chunk_content: str) -> dict:
         return {
             "title": display_title,
             "section": display_section,
@@ -59,7 +58,7 @@ def chunk_document(
         segments = clean_content.split(separator)
 
     # Hard-split any segment still larger than max_chars so no chunk is oversized.
-    bounded_segments: List[str] = []
+    bounded_segments: list[str] = []
     for segment in segments:
         if len(segment) <= max_chars:
             bounded_segments.append(segment)
@@ -67,8 +66,8 @@ def chunk_document(
             for start in range(0, len(segment), max_chars):
                 bounded_segments.append(segment[start:start + max_chars])
 
-    docs: List[Dict] = []
-    current_chunk: List[str] = []
+    docs: list[dict] = []
+    current_chunk: list[str] = []
     current_length = 0
     sep_len = len(separator)
 
@@ -93,7 +92,7 @@ def chunk_markdown_by_heading(
     source: str,
     content: str,
     max_chars: int = MAX_CHUNK_CHARS,
-) -> List[Dict]:
+) -> list[dict]:
     """Split structured markdown into one focused chunk per ``##``/``###`` section.
 
     Hand-curated docs pack many distinct facts into one page. A single whole-page
@@ -123,7 +122,7 @@ def chunk_markdown_by_heading(
         # No section headings to split on — fall back to size-based chunking.
         return chunk_document(title, None, source, content, max_chars)
 
-    def _doc(section: str, chunk_content: str) -> Dict:
+    def _doc(section: str, chunk_content: str) -> dict:
         return {
             "title": f"{title} - {section}",
             "section": section,
@@ -131,7 +130,7 @@ def chunk_markdown_by_heading(
             "content": chunk_content,
         }
 
-    docs: List[Dict] = []
+    docs: list[dict] = []
     for i in range(0, len(headings_and_bodies), 2):
         heading_line = headings_and_bodies[i].strip()
         body = headings_and_bodies[i + 1].strip() if i + 1 < len(headings_and_bodies) else ""

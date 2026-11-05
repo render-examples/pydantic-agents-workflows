@@ -61,7 +61,9 @@ class QuestionRequest(BaseModel):
 
     question: str = Field(..., min_length=10, max_length=500, description="The question to answer")
     session_id: str | None = Field(None, description="Optional session ID (UUID) for conversation tracking")
-    client_id: str | None = Field(None, description="Anonymous browser client ID (UUID) used to scope history to this user")
+    client_id: str | None = Field(
+        None, description="Anonymous browser client ID (UUID) used to scope history to this user"
+    )
 
     @field_validator('session_id', 'client_id')
     @classmethod

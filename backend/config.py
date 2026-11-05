@@ -67,7 +67,8 @@ class Settings(BaseSettings):
     # Hard floor beneath the relative cutoff: a doc is never returned below this cosine, so even
     # a question whose best match is weak can't admit sub-threshold noise. Gates the final set.
     similarity_threshold: float = 0.3
-    verification_threshold: float = 0.30  # Similarity threshold for claim verification (lowered to catch explicit facts)
+    # Similarity threshold for claim verification (lowered to catch explicit facts)
+    verification_threshold: float = 0.30
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
     

@@ -1,18 +1,19 @@
 """Ingest pre-generated embeddings into PostgreSQL with pgvector."""
 
+import argparse
 import asyncio
 import json
-from pathlib import Path
 import os
 import sys
-import argparse
+from pathlib import Path
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from backend.database import vector_store
-from backend.config import settings
 from dotenv import load_dotenv
+
+from backend.config import settings
+from backend.database import vector_store
 
 # Load environment variables
 load_dotenv()
@@ -72,7 +73,7 @@ async def main(force: bool = False, skip_if_exists: bool = False, sync: bool = F
         return
     
     print(f"\n2️⃣ Loading embeddings from {embeddings_path}")
-    with open(embeddings_path, 'r') as f:
+    with open(embeddings_path) as f:
         docs = json.load(f)
     
     print(f"📄 Loaded {len(docs)} documents")
@@ -114,7 +115,7 @@ async def main(force: bool = False, skip_if_exists: bool = False, sync: bool = F
     
     # Verify
     final_count = await vector_store.get_document_count()
-    print(f"\n4️⃣ Verification")
+    print("\n4️⃣ Verification")
     print(f"✅ Successfully ingested {final_count} documents")
     
     # Test similarity search

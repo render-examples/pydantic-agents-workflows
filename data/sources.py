@@ -18,9 +18,10 @@ Three build strategies cover every live source:
 from __future__ import annotations
 
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup

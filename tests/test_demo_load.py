@@ -87,7 +87,7 @@ async def test_one_visitor_burst_does_not_block_other_visitors(run_burst):
     # Send one request from another visitor after every 20 attacker requests.
     ips = [ip for i in range(20) for ip in [attacker] * 20 + [f"198.51.100.{i}"]]
     _, responses, _ = await run_burst(ips, per_minute=3, per_visitor=10, daily=200)
-    others = [r.status_code for ip, r in zip(ips, responses) if ip != attacker]
+    others = [r.status_code for ip, r in zip(ips, responses, strict=True) if ip != attacker]
     assert others == [202] * 20
 
 

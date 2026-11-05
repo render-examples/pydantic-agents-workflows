@@ -2,16 +2,15 @@
 
 import asyncio
 import json
-from pathlib import Path
-from typing import List, Dict
-import httpx
-from openai import AsyncOpenAI
 import os
 import re
-from dotenv import load_dotenv
+from pathlib import Path
 
+import httpx
 from chunking import chunk_document
 from crawl_tutorials import fetch_tutorial_docs
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
 
 # Load environment variables
 load_dotenv()
@@ -20,7 +19,7 @@ load_dotenv()
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-async def fetch_render_docs() -> List[Dict]:
+async def fetch_render_docs() -> list[dict]:
     """
     Fetch actual Render documentation from llms-full.txt.
     
@@ -66,7 +65,7 @@ async def fetch_render_docs() -> List[Dict]:
         # Split page into subsections by h2 headers
         subsections = re.split(r'\n(?=## [^#])', page)
         
-        for i, subsection in enumerate(subsections):
+        for subsection in subsections:
             if not subsection.strip():
                 continue
             
@@ -100,7 +99,7 @@ async def fetch_render_docs() -> List[Dict]:
     return docs
 
 
-async def fetch_render_docs_sample() -> List[Dict]:
+async def fetch_render_docs_sample() -> list[dict]:
     """
     Sample Render documentation chunks (backup/demo mode).
     """
@@ -728,7 +727,7 @@ Render complies with:
     return sample_docs
 
 
-async def generate_embedding(text: str) -> List[float]:
+async def generate_embedding(text: str) -> list[float]:
     """Generate embedding for text with exponential backoff retry on rate limits."""
     import openai
 
@@ -740,7 +739,7 @@ async def generate_embedding(text: str) -> List[float]:
                 dimensions=1536
             )
             return response.data[0].embedding
-        except openai.RateLimitError as e:
+        except openai.RateLimitError:
             if attempt == 4:
                 raise
             wait = 2 ** attempt  # 1s, 2s, 4s, 8s
@@ -768,8 +767,9 @@ async def test_database_connection():
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     
-    from backend.config import settings
     import asyncpg
+
+    from backend.config import settings
     
     print("🔍 Testing database connection...")
     print(f"   Database: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'unknown'}")
@@ -784,7 +784,10 @@ async def test_database_connection():
         )
         if not result:
             print("\n⚠️  WARNING: pgvector extension not found")
-            print("   Run: docker-compose exec postgres psql -U render_qa_user -d render_qa_db -c 'CREATE EXTENSION vector;'")
+            print(
+                "   Run: docker-compose exec postgres psql -U render_qa_user -d render_qa_db"
+                " -c 'CREATE EXTENSION vector;'"
+            )
         
         await conn.close()
         print("✅ Database connection successful!\n")
@@ -795,12 +798,12 @@ async def test_database_connection():
         print("   Expected format: postgresql://render_qa_user:local_dev_password@localhost:5432/render_qa_db")
         return False
     except asyncpg.PostgresConnectionError as e:
-        print(f"\n❌ ERROR: Cannot connect to database")
+        print("\n❌ ERROR: Cannot connect to database")
         print(f"   {e}")
         print("   Make sure PostgreSQL is running: docker-compose ps")
         return False
     except Exception as e:
-        print(f"\n❌ ERROR: Database connection failed")
+        print("\n❌ ERROR: Database connection failed")
         print(f"   {e}")
         return False
 
