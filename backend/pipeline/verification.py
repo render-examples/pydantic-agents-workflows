@@ -123,13 +123,13 @@ async def verify_claims(claims: List[str]) -> dict:
         claims: List of claim strings to verify
 
     Returns:
-        dict with 'verified_claims', 'verification_rate', 'cost_usd'
+        dict with 'verified_claims', 'verification_rate', 'cost_usd', 'tokens_used'
     """
 
     logfire.info(f"Verifying {len(claims)} claims")
 
     if not claims:
-        return {"verified_claims": [], "verification_rate": 0.0, "cost_usd": 0.0}
+        return {"verified_claims": [], "verification_rate": 0.0, "cost_usd": 0.0, "tokens_used": 0}
 
     # Batch embed all claims in a single API call
     batch_result = await embedder.embed_documents(claims)
