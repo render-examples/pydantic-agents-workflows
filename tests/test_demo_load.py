@@ -77,20 +77,11 @@ async def test_one_visitor_burst_gets_only_the_per_minute_limit(run_burst, pool)
     assert await _count(pool, "demo:all:") == 3
 
 
-# reserve() increments all three counters before it checks them, so during a
-# burst the blocked requests raise the day counters until they release.
-BURST_INFLATES_DAY_COUNTERS = pytest.mark.xfail(
-    strict=True, reason="reserve() increments the day counters before it checks the minute limit"
-)
-
-
-@BURST_INFLATES_DAY_COUNTERS
 async def test_minute_limit_burst_gets_a_minute_retry_after(run_burst):
     _, responses, _ = await run_burst(["203.0.113.1"] * 50, per_minute=3, per_visitor=10)
     assert all(int(r.headers["retry-after"]) <= 60 for r in responses if r.status_code == 429)
 
 
-@BURST_INFLATES_DAY_COUNTERS
 async def test_one_visitor_burst_does_not_block_other_visitors(run_burst):
     attacker = "203.0.113.1"
     # Send one request from another visitor after every 20 attacker requests.

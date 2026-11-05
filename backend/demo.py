@@ -139,20 +139,20 @@ async def reserve(pool: asyncpg.Pool, ip: str, limits: Limits, now: float | None
             ordered,
             [ends[k] for k in ordered],
         )
-    counts = {row["key"]: row["count"] for row in rows}  # RETURNING does not keep input order.
-    minute_count, visitor_count, all_count = (counts[k] for k in keys)
+        counts = {row["key"]: row["count"] for row in rows}  # RETURNING does not keep input order.
+        minute_count, visitor_count, all_count = (counts[k] for k in keys)
 
-    retry_after = 0
-    if 0 < limits.per_minute < minute_count:
-        retry_after = max(retry_after, _seconds_to_window_end(now, MINUTE))
-    if 0 < limits.per_visitor < visitor_count or 0 < limits.daily < all_count:
-        retry_after = max(retry_after, _seconds_to_window_end(now, DAY))
+        retry_after = 0
+        if 0 < limits.per_minute < minute_count:
+            retry_after = max(retry_after, _seconds_to_window_end(now, MINUTE))
+        if 0 < limits.per_visitor < visitor_count or 0 < limits.daily < all_count:
+            retry_after = max(retry_after, _seconds_to_window_end(now, DAY))
+        if retry_after:
+            # Raise before commit, so the rollback removes the increments and
+            # other requests never see the counts of a blocked request.
+            raise LimitExceeded(retry_after)
 
-    reservation = Reservation(keys=keys, remaining=_remaining(limits, visitor_count, all_count))
-    if retry_after:
-        await release(pool, reservation)
-        raise LimitExceeded(retry_after)
-    return reservation
+    return Reservation(keys=keys, remaining=_remaining(limits, visitor_count, all_count))
 
 
 async def release(pool: asyncpg.Pool, reservation: Reservation) -> None:
