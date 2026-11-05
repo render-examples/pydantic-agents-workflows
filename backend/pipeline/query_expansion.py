@@ -1,13 +1,11 @@
 """Query expansion for improved retrieval diversity and coverage."""
 
-from typing import List
+import logfire
 
 from backend.config import settings
 from backend.models import QueryExpansionOutput
 from backend.observability import calculate_openai_cost, usage_and_cost
 from backend.pipeline._agents import openai_agent
-import logfire
-
 
 QUERY_EXPANSION_INSTRUCTIONS = """You are a search query expert for Render's cloud platform documentation.
 
@@ -48,7 +46,7 @@ _query_expansion_agent = openai_agent(
 )
 
 
-async def expand_query(question: str) -> tuple[List[str], float]:
+async def expand_query(question: str) -> tuple[list[str], float]:
     """
     Use LLM to generate query variations for better retrieval coverage.
 
@@ -66,10 +64,12 @@ async def expand_query(question: str) -> tuple[List[str], float]:
             f"Original question: {question}",
             model_settings={"temperature": 0.3, "max_tokens": 1000},
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Query expansion is a retrieval enhancement, not a hard requirement. If the
         # agent fails (e.g. token-limit truncation or a transient provider error), fall
         # back to the original question alone so the Q&A pipeline still answers.
+        # Catch all errors, because the model request runs as a chained task and its
+        # errors can come from pydantic-ai, the provider SDK, or the harness.
         logfire.warning(
             "Query expansion failed; falling back to original question only",
             original_question=question,
