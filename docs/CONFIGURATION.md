@@ -83,8 +83,9 @@ There is no login on any endpoint. Read these points before you share a deployed
   Anyone who has a visitor's `client_id` can read that visitor's history.
 - Only the browser that started a run can poll it. `POST /ask` returns a `progress_token`, and
   `GET /ask/{run_id}` and `GET /ask/{run_id}/logs` return 404 without the matching token.
-- `CORS_ORIGINS` defaults to `http://localhost:3000`. `render.yaml` sets it to the frontend's
-  host. The value is a comma-separated list, and a bare host gets an `https://` prefix.
+- `CORS_ORIGINS` defaults to `http://localhost:3000`. On Render, set it on the
+  `pydantic-agents-workflows-api` service to the frontend URL. The value is a comma-separated
+  list, and a bare host gets an `https://` prefix.
 - Secrets live only in environment variables. `render.yaml` marks all secrets `sync: false`,
   so Render prompts for them on first apply.
 
