@@ -355,11 +355,7 @@ query_text = ' '.join(query_text.split())
 
 ### 2. Document Chunking
 
-For optimal results:
-- Keep chunks 500-1500 characters
-- Include document title in each chunk
-- Preserve technical terms and numbers
-- Don't split code blocks or lists
+`data/scripts/chunking.py` splits documents at paragraph boundaries into chunks of at most 2,000 characters, and discards content shorter than 100 characters. Curated markdown pages get one chunk per `##` or `###` section. See [Embeddings and Chunking](./CONFIGURATION.md#embeddings-and-chunking).
 
 ### 3. Index Maintenance
 

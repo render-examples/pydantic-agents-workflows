@@ -177,9 +177,9 @@ async def generate_answer(question: str, context: str) -> dict:
 
 **Purpose:** Verify each claim against documentation
 
-**Method:** RAG search for each claim's embedding
+**Method:** Vector search finds candidate passages for each claim. An LLM judge (`CLAIMS_MODEL`) then decides whether the passages support the claim.
 
-**Threshold:** 0.85 similarity score
+**Threshold:** `VERIFICATION_THRESHOLD` (default 0.30) is the minimum cosine similarity for a candidate passage.
 
 **Output:** Verified vs unverified claims
 
@@ -292,7 +292,7 @@ Other:                  7% of traffic
 ### Reducing Costs
 
 1. **Lower MAX_TOKENS** - Reduce output token limit for generation
-2. **Use smaller models** - Consider GPT-4o-mini for less critical stages
+2. **Use smaller models** - See [Model Selection](./CONFIGURATION.md#model-selection)
 3. **Cache frequent questions** - Store common Q&A pairs
 
 ### Improving Quality
