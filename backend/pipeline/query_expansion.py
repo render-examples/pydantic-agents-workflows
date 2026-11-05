@@ -1,6 +1,7 @@
 """Query expansion for improved retrieval diversity and coverage."""
 
 import logfire
+from pydantic_ai.exceptions import AgentRunError
 
 from backend.config import settings
 from backend.models import QueryExpansionOutput
@@ -64,12 +65,10 @@ async def expand_query(question: str) -> tuple[list[str], float]:
             f"Original question: {question}",
             model_settings={"temperature": 0.3, "max_tokens": 1000},
         )
-    except Exception:  # noqa: BLE001
-        # Query expansion is a retrieval enhancement, not a hard requirement. If the
-        # agent fails (e.g. token-limit truncation or a transient provider error), fall
-        # back to the original question alone so the Q&A pipeline still answers.
-        # Catch all errors, because the model request runs as a chained task and its
-        # errors can come from pydantic-ai, the provider SDK, or the harness.
+    except AgentRunError:
+        # Query expansion is optional. If the model fails, for example because the
+        # output was truncated or the provider returned an error, use the original
+        # question alone so that the pipeline still answers.
         logfire.warning(
             "Query expansion failed; falling back to original question only",
             original_question=question,
