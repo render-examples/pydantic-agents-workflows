@@ -222,7 +222,7 @@ The agents for answer generation, claims extraction, accuracy, and both quality 
 
 The stored trace still has the stage spans, the agent run spans, and the retrieval spans. The logs panel reads one trace ID, so it may not show the model request spans. To see them, open the chained run's logs in the Render Dashboard, or search Logfire by time and model name.
 
-If spans from chained runs do not reach Logfire, set `OTEL_BSP_SCHEDULE_DELAY` to a low value, such as `500`, on the Workflows service. `flush_on_exit` cannot wrap the generated tasks.
+`flush_on_exit` cannot wrap the generated tasks, so a short chained run can end before its spans are exported. To prevent this, the Blueprint sets `OTEL_BSP_SCHEDULE_DELAY` to `500` on the Workflows service. The span exporter then sends a batch every 500 ms instead of every 5 seconds.
 
 ---
 

@@ -110,6 +110,10 @@ projects:
               # Match .python-version and uv.lock
               - key: PYTHON_VERSION
                 value: "3.13"
+              # Send spans every 500 ms so that short chained runs do not
+              # end before their spans are exported.
+              - key: OTEL_BSP_SCHEDULE_DELAY
+                value: "500"
 
           # Backend API gateway (FastAPI + Logfire).
           # Starts and polls runs on the Workflows service above.
