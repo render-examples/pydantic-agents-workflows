@@ -32,6 +32,7 @@ https://github.com/user-attachments/assets/68c6ace5-b070-4c7c-9ab6-5d4342134956
 The project uses these parts of the [Pydantic](https://pydantic.dev/) stack:
 
 - **[Pydantic AI Agents](https://ai.pydantic.dev/agents/).** Each LLM stage is a `pydantic_ai.Agent` with a typed `output_type`. See [`backend/pipeline/`](./backend/pipeline/).
+- **[Pydantic AI Harness](https://github.com/pydantic/pydantic-ai/blob/main/docs/harness/render-workflows.md).** The `RenderWorkflows` capability runs each agent model request as a Render Workflows task run. See [Pipeline stages](#pipeline-stages).
 - **[Pydantic Embedder](https://ai.pydantic.dev/embeddings/).** `pydantic_ai.Embedder` embeds questions and claims. See [`backend/pipeline/embeddings.py`](./backend/pipeline/embeddings.py).
 - **[Pydantic](https://docs.pydantic.dev/) and pydantic-settings.** Pydantic models parse LLM output and API requests, and pydantic-settings reads the config in [`backend/config.py`](./backend/config.py).
 - **[genai-prices](https://github.com/pydantic/genai-prices).** Model prices come from this registry. The app multiplies them by the token counts from each agent run. See [`backend/prices.py`](./backend/prices.py).
@@ -66,7 +67,9 @@ The API also reads Postgres directly. The pipeline writes stage updates to Postg
 
 ### Pipeline stages
 
-`run_qa_pipeline` runs seven stages, and it calls every stage function inside the orchestrator process. Stages 3, 4, 6, and 7 use agents with the `RenderWorkflows` capability from [Pydantic AI Harness](https://github.com/pydantic/pydantic-ai/blob/main/docs/harness/render-workflows.md). Each model request from those agents runs as a chained task run, such as `answer__model.request`, so each request can retry on its own. Other failures, such as invalid structured output or an error in claim verification, fail the orchestrator task, which then runs again from the start.
+`run_qa_pipeline` runs seven stages, and it calls every stage function inside the orchestrator process. Stages 3, 4, 6, and 7 use agents with the `RenderWorkflows` capability from [Pydantic AI Harness](https://github.com/pydantic/pydantic-ai/blob/main/docs/harness/render-workflows.md). Each of these agents adds the capability in its `capabilities` list, with its own timeout and retry policy, through `model_request_workflows()` in [`backend/workflows_app.py`](./backend/workflows_app.py). The agent code does not change otherwise.
+
+`workflows/app.py` registers `run_qa_pipeline` with the `task` decorator of a `RenderWorkflows` instance. Inside that task, each model request from these agents runs as a chained task run, such as `answer__model.request`, so each request can retry on its own. Outside a workflow task, for example in unit tests, the agents call the model directly. Other failures, such as invalid structured output or an error in claim verification, fail the orchestrator task, which then runs again from the start.
 
 | # | Stage | Default model | Runs as |
 |---|-------|---------------|---------|
