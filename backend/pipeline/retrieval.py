@@ -319,22 +319,15 @@ async def inject_curated_docs(question: str, existing_docs: list[Document]) -> l
     if not lookups:
         return existing_docs
 
-    # De-dup lookups (e.g. pricing defaults could request the same table twice),
-    # preserving order.
-    seen_keys = set()
-    unique_lookups: list[DocLookup] = []
-    for lookup in lookups:
-        key = (lookup.source, lookup.title)
-        if key not in seen_keys:
-            seen_keys.add(key)
-            unique_lookups.append(lookup)
+    # Remove duplicate lookups and keep their order. For example, the pricing
+    # defaults can request the same table twice.
+    unique_lookups = list(dict.fromkeys(lookups))
 
-    # Don't re-inject content already in the retrieved set. Chunks of one curated
-    # page share a title, so dedup on (source, content) rather than (source, title).
-    existing_keys = {(doc.source, doc.content) for doc in existing_docs}
+    # Do not inject content that is already in the retrieved set or already injected.
+    # Chunks of one curated page share a title, so compare (source, content).
+    seen_keys = {(doc.source, doc.content) for doc in existing_docs}
 
     injected: list[Document] = []
-    seen_keys: set = set()
     async with vector_store.pool.acquire() as conn:
         for lookup in unique_lookups:
             docs = await _fetch_curated_docs(conn, lookup)
@@ -347,7 +340,7 @@ async def inject_curated_docs(question: str, existing_docs: list[Document]) -> l
                 continue
             for doc in docs:
                 key = (doc.source, doc.content)
-                if key in existing_keys or key in seen_keys:
+                if key in seen_keys:
                     continue
                 seen_keys.add(key)
                 injected.append(doc)

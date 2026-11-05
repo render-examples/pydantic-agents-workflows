@@ -1,6 +1,5 @@
 """Stage 4: Claims Extraction."""
 
-
 import logfire
 
 from backend.config import PipelineConfig, settings

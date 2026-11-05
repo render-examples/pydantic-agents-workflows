@@ -1,6 +1,5 @@
 """Stage 3: Answer Generation."""
 
-
 import logfire
 from render import Retry
 
