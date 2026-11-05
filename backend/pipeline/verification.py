@@ -45,6 +45,7 @@ passage states it almost verbatim, ~0.6-0.8 when it is clearly implied, lower wh
 
 
 _verification_agent = openai_agent(
+    "verification",
     settings.claims_model, VERIFICATION_INSTRUCTIONS, output_type=ClaimVerdict
 )
 
