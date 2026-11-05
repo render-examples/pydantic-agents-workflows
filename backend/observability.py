@@ -1,20 +1,16 @@
 """Logfire configuration and instrumentation."""
 
+import time
 from collections.abc import Callable
-from typing import Any, TypeVar
+from contextlib import asynccontextmanager
+from functools import wraps
+from typing import Any, ParamSpec, TypeVar
 
 import logfire
 from logfire import LogfireSpan
 
-try:
-    from typing import ParamSpec
-except ImportError:
-    from typing import ParamSpec
-import time
-from contextlib import asynccontextmanager
-from functools import wraps
-
 from backend.config import settings
+from backend.prices import model_cost
 
 # Configure Logfire
 logfire.configure(
@@ -138,20 +134,16 @@ async def pipeline_trace(question: str):
 
 def calculate_embedding_cost(tokens: int) -> float:
     """Calculate cost for embedding API calls."""
-    from backend.config import settings
-    from backend.prices import model_cost
     return model_cost(tokens, 0, settings.embedding_model, "openai")
 
 
 def calculate_openai_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """Calculate cost for OpenAI API calls."""
-    from backend.prices import model_cost
     return model_cost(input_tokens, output_tokens, model, "openai")
 
 
 def calculate_anthropic_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """Calculate cost for Anthropic API calls."""
-    from backend.prices import model_cost
     return model_cost(input_tokens, output_tokens, model, "anthropic")
 
 
