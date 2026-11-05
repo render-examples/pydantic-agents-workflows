@@ -24,7 +24,7 @@ def model_cost(input_tokens: int, output_tokens: int, model: str, provider_id: s
             provider_id=provider_id,
         )
         return float(price.total_price)
-    except Exception as exc:
+    except (LookupError, ValueError) as exc:
         logfire.warning(
             "genai-prices lookup failed; using fallback rate",
             model=model,

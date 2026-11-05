@@ -6,7 +6,6 @@ from typing import Annotated, Any
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-
 # Max embedding dimensions supported per OpenAI model. Used to reject an
 # embedding_model/embedding_dimensions mismatch at startup (a wrong pairing
 # otherwise surfaces only as opaque API errors at query time). Unknown models

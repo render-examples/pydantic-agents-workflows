@@ -1,14 +1,13 @@
 """Database connection and pgvector operations."""
 
-import asyncpg
-from typing import Optional
 import json
 from contextlib import asynccontextmanager
 
-from backend.config import settings
-from backend.models import Document
+import asyncpg
 import logfire
 
+from backend.config import settings
+from backend.models import Document
 
 # Stable key so all instances contend on the same advisory lock when
 # initializing the schema concurrently (e.g. the ingest_all fan-out runs
@@ -32,7 +31,7 @@ class VectorStore:
     """PostgreSQL vector store with pgvector extension."""
     
     def __init__(self):
-        self.pool: Optional[asyncpg.Pool] = None
+        self.pool: asyncpg.Pool | None = None
     
     async def initialize(self):
         """Initialize the database connection pool and create tables."""
@@ -54,156 +53,155 @@ class VectorStore:
         # concurrently updated". Only one instance runs the block at a time; the
         # rest wait, then re-run the now-idempotent statements. The lock releases
         # automatically when the transaction commits.
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute("SELECT pg_advisory_xact_lock($1)", _SCHEMA_INIT_LOCK_KEY)
+        async with self.pool.acquire() as conn, conn.transaction():
+            await conn.execute("SELECT pg_advisory_xact_lock($1)", _SCHEMA_INIT_LOCK_KEY)
 
-                # Enable pgvector extension
-                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            # Enable pgvector extension
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-                # Create documents table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS documents (
-                        id SERIAL PRIMARY KEY,
-                        content TEXT NOT NULL,
-                        source TEXT NOT NULL,
-                        title TEXT NOT NULL,
-                        section TEXT,
-                        metadata JSONB DEFAULT '{}',
-                        embedding vector(1536),
-                        content_tsv tsvector,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-
-                # Create index for vector similarity search.
-                # HNSW, not ivfflat: with pgvector's default ivfflat.probes=1
-                # a query scans only ~1 of 100 lists (~1% of rows), so the true
-                # #1 nearest neighbor is frequently never retrieved, leaving
-                # claims unverifiable (0% confidence) even though their
-                # supporting chunk matches at cosine >0.7. HNSW gives
-                # effectively exact recall at this scale (and scales far better)
-                # with no probe tuning. The DROP below migrates any deployment
-                # still carrying the ivfflat index.
-                await conn.execute("DROP INDEX IF EXISTS documents_embedding_idx")
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS documents_embedding_hnsw_idx
-                    ON documents USING hnsw (embedding vector_cosine_ops)
-                """)
-
-                # Create index for source lookups
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS documents_source_idx
-                    ON documents(source)
-                """)
-
-                # Create GIN index for full-text search
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS documents_content_tsv_idx
-                    ON documents USING gin(content_tsv)
-                """)
-
-                # Create trigger function for auto-updating tsvector
-                await conn.execute("""
-                    CREATE OR REPLACE FUNCTION documents_tsvector_trigger() RETURNS trigger AS $$
-                    BEGIN
-                        NEW.content_tsv := to_tsvector('english',
-                            coalesce(NEW.title, '') || ' ' ||
-                            coalesce(NEW.section, '') || ' ' ||
-                            coalesce(NEW.content, '')
-                        );
-                        RETURN NEW;
-                    END
-                    $$ LANGUAGE plpgsql;
-                """)
-
-                # Create trigger to auto-update tsvector on insert/update
-                await conn.execute("""
-                    DROP TRIGGER IF EXISTS documents_tsvector_update ON documents;
-
-                    CREATE TRIGGER documents_tsvector_update
-                    BEFORE INSERT OR UPDATE ON documents
-                    FOR EACH ROW
-                    EXECUTE FUNCTION documents_tsvector_trigger();
-                """)
-
-                # Create sessions table for Q&A history
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS qa_sessions (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        question TEXT NOT NULL,
-                        answer TEXT NOT NULL,
-                        sources JSONB DEFAULT '[]',
-                        claims JSONB DEFAULT '[]',
-                        evaluations JSONB DEFAULT '[]',
-                        quality_score FLOAT NOT NULL,
-                        total_cost FLOAT NOT NULL,
-                        total_duration_ms FLOAT NOT NULL,
-                        trace_id TEXT,
-                        stages JSONB DEFAULT '[]',
-                        client_id TEXT,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-
-                # Migration: the pipeline is a single linear pass, so the
-                # refinement-loop `iterations` column is unused. Drop it from
-                # pre-existing deployments (idempotent; no-op on fresh tables).
-                await conn.execute(
-                    "ALTER TABLE qa_sessions DROP COLUMN IF EXISTS iterations"
+            # Create documents table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id SERIAL PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    section TEXT,
+                    metadata JSONB DEFAULT '{}',
+                    embedding vector(1536),
+                    content_tsv tsvector,
+                    created_at TIMESTAMP DEFAULT NOW()
                 )
+            """)
 
-                # Migration: history is scoped per anonymous browser client.
-                # Add the owner column to pre-existing deployments (idempotent).
-                # Rows with a NULL client_id are excluded from every client's
-                # history, since history queries filter by equality.
-                await conn.execute(
-                    "ALTER TABLE qa_sessions ADD COLUMN IF NOT EXISTS client_id TEXT"
+            # Create index for vector similarity search.
+            # HNSW, not ivfflat: with pgvector's default ivfflat.probes=1
+            # a query scans only ~1 of 100 lists (~1% of rows), so the true
+            # #1 nearest neighbor is frequently never retrieved, leaving
+            # claims unverifiable (0% confidence) even though their
+            # supporting chunk matches at cosine >0.7. HNSW gives
+            # effectively exact recall at this scale (and scales far better)
+            # with no probe tuning. The DROP below migrates any deployment
+            # still carrying the ivfflat index.
+            await conn.execute("DROP INDEX IF EXISTS documents_embedding_idx")
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS documents_embedding_hnsw_idx
+                ON documents USING hnsw (embedding vector_cosine_ops)
+            """)
+
+            # Create index for source lookups
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS documents_source_idx
+                ON documents(source)
+            """)
+
+            # Create GIN index for full-text search
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS documents_content_tsv_idx
+                ON documents USING gin(content_tsv)
+            """)
+
+            # Create trigger function for auto-updating tsvector
+            await conn.execute("""
+                CREATE OR REPLACE FUNCTION documents_tsvector_trigger() RETURNS trigger AS $$
+                BEGIN
+                    NEW.content_tsv := to_tsvector('english',
+                        coalesce(NEW.title, '') || ' ' ||
+                        coalesce(NEW.section, '') || ' ' ||
+                        coalesce(NEW.content, '')
+                    );
+                    RETURN NEW;
+                END
+                $$ LANGUAGE plpgsql;
+            """)
+
+            # Create trigger to auto-update tsvector on insert/update
+            await conn.execute("""
+                DROP TRIGGER IF EXISTS documents_tsvector_update ON documents;
+
+                CREATE TRIGGER documents_tsvector_update
+                BEFORE INSERT OR UPDATE ON documents
+                FOR EACH ROW
+                EXECUTE FUNCTION documents_tsvector_trigger();
+            """)
+
+            # Create sessions table for Q&A history
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS qa_sessions (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    sources JSONB DEFAULT '[]',
+                    claims JSONB DEFAULT '[]',
+                    evaluations JSONB DEFAULT '[]',
+                    quality_score FLOAT NOT NULL,
+                    total_cost FLOAT NOT NULL,
+                    total_duration_ms FLOAT NOT NULL,
+                    trace_id TEXT,
+                    stages JSONB DEFAULT '[]',
+                    client_id TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
                 )
+            """)
 
-                # Create index for recent sessions
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS qa_sessions_created_at_idx
-                    ON qa_sessions(created_at DESC)
-                """)
+            # Migration: the pipeline is a single linear pass, so the
+            # refinement-loop `iterations` column is unused. Drop it from
+            # pre-existing deployments (idempotent; no-op on fresh tables).
+            await conn.execute(
+                "ALTER TABLE qa_sessions DROP COLUMN IF EXISTS iterations"
+            )
 
-                # Composite index for the per-client recent-sessions query
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS qa_sessions_client_created_idx
-                    ON qa_sessions(client_id, created_at DESC)
-                """)
+            # Migration: history is scoped per anonymous browser client.
+            # Add the owner column to pre-existing deployments (idempotent).
+            # Rows with a NULL client_id are excluded from every client's
+            # history, since history queries filter by equality.
+            await conn.execute(
+                "ALTER TABLE qa_sessions ADD COLUMN IF NOT EXISTS client_id TEXT"
+            )
 
-                # Create index for trace_id lookups
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS qa_sessions_trace_id_idx
-                    ON qa_sessions(trace_id)
-                """)
+            # Create index for recent sessions
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS qa_sessions_created_at_idx
+                ON qa_sessions(created_at DESC)
+            """)
 
-                # Live per-stage progress for in-flight pipeline runs. The Workflows
-                # service writes here as it advances through stages; the gateway reads
-                # it while polling so the UI can show real stage-by-stage feedback.
-                # One short-lived row per run, keyed by an opaque progress token.
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS pipeline_progress (
-                        token TEXT PRIMARY KEY,
-                        updates JSONB NOT NULL DEFAULT '[]',
-                        updated_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
+            # Composite index for the per-client recent-sessions query
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS qa_sessions_client_created_idx
+                ON qa_sessions(client_id, created_at DESC)
+            """)
 
-                # Migration: `run_id` ties a progress token to the run that
-                # POST /ask started, so only the caller who holds the token can
-                # poll that run. `trace_id` lets the caller open the run's logs
-                # without a saved session (demo mode saves no sessions).
-                await conn.execute(
-                    "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS run_id TEXT"
+            # Create index for trace_id lookups
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS qa_sessions_trace_id_idx
+                ON qa_sessions(trace_id)
+            """)
+
+            # Live per-stage progress for in-flight pipeline runs. The Workflows
+            # service writes here as it advances through stages; the gateway reads
+            # it while polling so the UI can show real stage-by-stage feedback.
+            # One short-lived row per run, keyed by an opaque progress token.
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pipeline_progress (
+                    token TEXT PRIMARY KEY,
+                    updates JSONB NOT NULL DEFAULT '[]',
+                    updated_at TIMESTAMP DEFAULT NOW()
                 )
-                await conn.execute(
-                    "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS trace_id TEXT"
-                )
+            """)
 
-                # Demo usage limit counters. See backend/demo.py.
-                await conn.execute(DEMO_COUNTERS_SCHEMA)
+            # Migration: `run_id` ties a progress token to the run that
+            # POST /ask started, so only the caller who holds the token can
+            # poll that run. `trace_id` lets the caller open the run's logs
+            # without a saved session (demo mode saves no sessions).
+            await conn.execute(
+                "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS run_id TEXT"
+            )
+            await conn.execute(
+                "ALTER TABLE pipeline_progress ADD COLUMN IF NOT EXISTS trace_id TEXT"
+            )
+
+            # Demo usage limit counters. See backend/demo.py.
+            await conn.execute(DEMO_COUNTERS_SCHEMA)
 
         logfire.info("Database initialized successfully")
     
@@ -219,8 +217,8 @@ class VectorStore:
         source: str,
         title: str,
         embedding: list[float],
-        section: Optional[str] = None,
-        metadata: Optional[dict] = None
+        section: str | None = None,
+        metadata: dict | None = None
     ) -> int:
         """Insert a document with its embedding."""
         
@@ -244,32 +242,31 @@ class VectorStore:
     
     async def insert_documents_batch(
         self,
-        documents: list[tuple[str, str, str, list[float], Optional[str], dict]]
+        documents: list[tuple[str, str, str, list[float], str | None, dict]]
     ) -> list[int]:
         """Insert multiple documents in a batch."""
         
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
         
-        async with self.pool.acquire() as conn:
-            # Use a transaction for batch insert
-            async with conn.transaction():
-                ids = []
-                for content, source, title, embedding, section, metadata in documents:
-                    # Convert metadata dict to JSON string for JSONB column
-                    metadata_json = json.dumps(metadata or {})
-                    
-                    # Convert embedding list to pgvector format string
-                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-                    
-                    result = await conn.fetchrow("""
-                        INSERT INTO documents (content, source, title, section, metadata, embedding)
-                        VALUES ($1, $2, $3, $4, $5::jsonb, $6::vector)
-                        RETURNING id
-                    """, content, source, title, section, metadata_json, embedding_str)
-                    ids.append(result['id'])
+        # Use a transaction for batch insert
+        async with self.pool.acquire() as conn, conn.transaction():
+            ids = []
+            for content, source, title, embedding, section, metadata in documents:
+                # Convert metadata dict to JSON string for JSONB column
+                metadata_json = json.dumps(metadata or {})
                 
-                return ids
+                # Convert embedding list to pgvector format string
+                embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                
+                result = await conn.fetchrow("""
+                    INSERT INTO documents (content, source, title, section, metadata, embedding)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6::vector)
+                    RETURNING id
+                """, content, source, title, section, metadata_json, embedding_str)
+                ids.append(result['id'])
+            
+            return ids
     
     async def similarity_search(
         self,
@@ -538,7 +535,7 @@ class VectorStore:
                 await conn.fetchval("SELECT 1")
             
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - Any error means the database is not healthy.
             logfire.error(f"Database health check failed: {e}")
             return False
     
@@ -552,9 +549,9 @@ class VectorStore:
         quality_score: float,
         total_cost: float,
         total_duration_ms: float,
-        trace_id: Optional[str] = None,
-        stages: Optional[list] = None,
-        client_id: Optional[str] = None
+        trace_id: str | None = None,
+        stages: list | None = None,
+        client_id: str | None = None
     ) -> str:
         """Save a Q&A session to the database."""
 
@@ -632,7 +629,7 @@ class VectorStore:
                 SET trace_id = EXCLUDED.trace_id, updated_at = NOW()
             """, token, trace_id)
 
-    async def get_run(self, token: str, run_id: str) -> Optional[dict]:
+    async def get_run(self, token: str, run_id: str) -> dict | None:
         """Return the progress row only if ``token`` belongs to ``run_id``.
 
         The row has ``updates`` (the cumulative stage list) and ``trace_id``.
@@ -693,7 +690,7 @@ class VectorStore:
             
             return sessions
     
-    async def get_session_by_id(self, session_id: str, client_id: str) -> Optional[dict]:
+    async def get_session_by_id(self, session_id: str, client_id: str) -> dict | None:
         """Get a Q&A session by ID, scoped to its owning client.
 
         A session that exists but belongs to another client (or a legacy

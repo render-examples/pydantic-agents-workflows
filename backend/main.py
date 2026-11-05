@@ -19,29 +19,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 import asyncpg
 import logfire
-
-# Importing observability configures Logfire + instrumentation at module load.
-import backend.observability  # noqa: F401
-
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from render import RenderAsync
 from render.client.errors import RenderError
 from render.client.types import TaskRunStatusValues
 
-from backend.config import settings
-from backend.models import QuestionRequest, HealthCheck
-from backend.database import vector_store
+# Importing observability configures Logfire + instrumentation at module load.
+import backend.observability  # noqa: F401
 from backend.api.dependencies import ClientId, require_history_enabled
 from backend.api.logs import fetch_logfire_logs
+from backend.config import settings
+from backend.database import vector_store
 from backend.demo import (
     DEPLOY_URL,
     LIMIT_MESSAGE,
-    LimitExceeded,
     LimiterUnavailable,
+    LimitExceeded,
     Limits,
     client_ip,
     get_pool,
@@ -49,6 +46,7 @@ from backend.demo import (
     release,
     reserve,
 )
+from backend.models import HealthCheck, QuestionRequest
 
 
 @lru_cache(maxsize=1)

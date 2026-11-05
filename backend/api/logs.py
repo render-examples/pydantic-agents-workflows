@@ -1,11 +1,11 @@
 """API endpoint for fetching Logfire logs."""
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import HTTPException
 import logfire
+from fastapi import HTTPException
 
 from backend.config import settings
 
@@ -60,7 +60,7 @@ async def fetch_logfire_logs(trace_id: str) -> dict:
     # The Query API requires min_timestamp and applies its own row limit
     # (default 100), independent of the SQL LIMIT.
     min_timestamp = (
-        datetime.now(timezone.utc) - timedelta(days=settings.logfire_query_window_days)
+        datetime.now(UTC) - timedelta(days=settings.logfire_query_window_days)
     ).isoformat()
     body = {
         "sql": query,

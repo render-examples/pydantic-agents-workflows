@@ -1,15 +1,18 @@
 """Logfire configuration and instrumentation."""
 
+from collections.abc import Callable
+from typing import Any, TypeVar
+
 import logfire
 from logfire import LogfireSpan
-from typing import Any, Callable, TypeVar
+
 try:
     from typing import ParamSpec
 except ImportError:
-    from typing_extensions import ParamSpec
-from functools import wraps
+    from typing import ParamSpec
 import time
 from contextlib import asynccontextmanager
+from functools import wraps
 
 from backend.config import settings
 
@@ -135,8 +138,8 @@ async def pipeline_trace(question: str):
 
 def calculate_embedding_cost(tokens: int) -> float:
     """Calculate cost for embedding API calls."""
-    from backend.prices import model_cost
     from backend.config import settings
+    from backend.prices import model_cost
     return model_cost(tokens, 0, settings.embedding_model, "openai")
 
 
@@ -177,7 +180,7 @@ def track_pipeline_metrics(
     total_duration_ms: float,
     quality_score: float,
     accuracy_score: float,
-    session_id: str = None
+    session_id: str | None = None
 ):
     """
     Track custom business metrics for the pipeline execution.
