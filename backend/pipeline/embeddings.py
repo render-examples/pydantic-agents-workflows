@@ -1,13 +1,12 @@
 """Stage 1: Question Embedding."""
 
+import logfire
 from pydantic_ai import Embedder, EmbeddingSettings
 from pydantic_ai.embeddings.openai import OpenAIEmbeddingModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from backend.config import settings, PipelineConfig
-from backend.observability import instrument_stage, calculate_embedding_cost
-import logfire
-
+from backend.config import PipelineConfig, settings
+from backend.observability import calculate_embedding_cost, instrument_stage
 
 # Pydantic AI embedder (auto-instrumented by logfire.instrument_pydantic_ai())
 embedder = Embedder(

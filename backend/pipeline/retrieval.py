@@ -4,16 +4,15 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import List, Optional
 
-from backend.config import settings, PipelineConfig
+import logfire
+
+from backend.config import PipelineConfig, settings
 from backend.database import vector_store
 from backend.models import Document
 from backend.observability import instrument_stage
 from backend.pipeline.embeddings import embed_question
 from backend.pipeline.query_expansion import expand_query, should_expand_query
-import logfire
-
 
 # Score for an editorially-injected curated doc: the top of the cosine scale, so it
 # ranks first. It is NOT a measured similarity — it marks a doc we deliberately surface
@@ -105,8 +104,8 @@ TUTORIALS_INDEX_SOURCE = "https://render.com/tutorials"
 class DocLookup:
     """Identifies one curated doc to fetch — by source URL, or by title within the
     pricing page (all pricing tables share PRICING_SOURCE and differ only by title)."""
-    source: Optional[str] = None
-    title: Optional[str] = None
+    source: str | None = None
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -167,7 +166,7 @@ def _parse_metadata(raw) -> dict:
     return raw or {}
 
 
-async def _fetch_curated_docs(conn, lookup: DocLookup) -> List[Document]:
+async def _fetch_curated_docs(conn, lookup: DocLookup) -> list[Document]:
     """Fetch the curated doc(s) for a lookup — by (pricing-page) title or by source.
 
     Source-based lookups return ALL rows for the source: curated pages are now
@@ -194,7 +193,7 @@ async def _fetch_curated_docs(conn, lookup: DocLookup) -> List[Document]:
             lookup.source,
         )
 
-    docs: List[Document] = []
+    docs: list[Document] = []
     for row in rows:
         metadata = _parse_metadata(row['metadata'])
         docs.append(Document(
@@ -210,7 +209,7 @@ async def _fetch_curated_docs(conn, lookup: DocLookup) -> List[Document]:
     return docs
 
 
-def detect_pricing_query(question: str) -> List[str]:
+def detect_pricing_query(question: str) -> list[str]:
     """
     Detect if question is asking about pricing/plans and which products.
 
@@ -256,7 +255,7 @@ def detect_pricing_query(question: str) -> List[str]:
     return list(tables_to_inject)
 
 
-def _apply_relative_cutoff(documents: List[Document]) -> List[Document]:
+def _apply_relative_cutoff(documents: list[Document]) -> list[Document]:
     """Keep only docs competitive with the best retrieved match.
 
     A fixed absolute threshold can't tell a strong topic (best cosine ~0.65) from a
@@ -290,7 +289,7 @@ def _apply_relative_cutoff(documents: List[Document]) -> List[Document]:
     return kept
 
 
-async def inject_curated_docs(question: str, existing_docs: List[Document]) -> List[Document]:
+async def inject_curated_docs(question: str, existing_docs: list[Document]) -> list[Document]:
     """
     Ensure the canonical doc for a matched topic is present — without padding the count.
 
@@ -307,7 +306,7 @@ async def inject_curated_docs(question: str, existing_docs: List[Document]) -> L
     question_lower = question.lower()
 
     # Collect the lookups every matching rule wants, in declaration order.
-    lookups: List[DocLookup] = []
+    lookups: list[DocLookup] = []
     for rule in INJECTION_RULES:
         if _matches(question_lower, rule.keywords, rule.word_keywords):
             logfire.info(f"Curated-doc rule matched: {rule.name}")
@@ -323,7 +322,7 @@ async def inject_curated_docs(question: str, existing_docs: List[Document]) -> L
     # De-dup lookups (e.g. pricing defaults could request the same table twice),
     # preserving order.
     seen_keys = set()
-    unique_lookups: List[DocLookup] = []
+    unique_lookups: list[DocLookup] = []
     for lookup in lookups:
         key = (lookup.source, lookup.title)
         if key not in seen_keys:
@@ -334,7 +333,7 @@ async def inject_curated_docs(question: str, existing_docs: List[Document]) -> L
     # page share a title, so dedup on (source, content) rather than (source, title).
     existing_keys = {(doc.source, doc.content) for doc in existing_docs}
 
-    injected: List[Document] = []
+    injected: list[Document] = []
     seen_keys: set = set()
     async with vector_store.pool.acquire() as conn:
         for lookup in unique_lookups:
@@ -372,7 +371,7 @@ async def inject_curated_docs(question: str, existing_docs: List[Document]) -> L
     return combined
 
 
-def collapse_sources(documents: List[Document]) -> List[Document]:
+def collapse_sources(documents: list[Document]) -> list[Document]:
     """Collapse retrieved chunks into one source entry per document for display.
 
     Retrieval and curated injection return *chunks*, and one page is chunked into
@@ -387,7 +386,7 @@ def collapse_sources(documents: List[Document]) -> List[Document]:
     by title, so the (source, title) key keeps them as distinct cards.
     """
     groups: dict = {}
-    order: List[tuple] = []
+    order: list[tuple] = []
     for doc in documents:
         title = (doc.metadata or {}).get("title")
         key = (doc.source, title)
@@ -400,7 +399,7 @@ def collapse_sources(documents: List[Document]) -> List[Document]:
             if doc.similarity_score > group["best"].similarity_score:
                 group["best"] = doc
 
-    collapsed: List[Document] = []
+    collapsed: list[Document] = []
     for key in order:
         group = groups[key]
         best = group["best"]
@@ -413,7 +412,7 @@ def collapse_sources(documents: List[Document]) -> List[Document]:
 
 
 @instrument_stage(PipelineConfig.STAGE_RETRIEVAL)
-async def retrieve_documents(embedding: List[float], original_question: str = None) -> dict:
+async def retrieve_documents(embedding: list[float], original_question: str | None = None) -> dict:
     """
     Find relevant documentation chunks via vector similarity.
 

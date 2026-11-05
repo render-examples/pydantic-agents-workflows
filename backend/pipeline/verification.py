@@ -1,19 +1,21 @@
 """Stage 5: Claims Verification."""
 
 import asyncio
-from typing import List
 
+import logfire
 from pydantic_ai import Embedder, EmbeddingSettings
 from pydantic_ai.embeddings.openai import OpenAIEmbeddingModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from backend.config import settings, PipelineConfig
+from backend.config import PipelineConfig, settings
 from backend.database import vector_store
 from backend.models import Claim, ClaimVerdict
-from backend.observability import instrument_stage, calculate_embedding_cost, calculate_openai_cost
+from backend.observability import (
+    calculate_embedding_cost,
+    calculate_openai_cost,
+    instrument_stage,
+)
 from backend.pipeline._agents import openai_agent
-import logfire
-
 
 # Pydantic AI embedder (auto-instrumented by logfire.instrument_pydantic_ai())
 embedder = Embedder(
@@ -115,7 +117,7 @@ Decide whether the passages substantiate the claim."""
 
 
 @instrument_stage(PipelineConfig.STAGE_VERIFICATION)
-async def verify_claims(claims: List[str]) -> dict:
+async def verify_claims(claims: list[str]) -> dict:
     """
     Verify each claim against documentation using RAG.
 
@@ -140,7 +142,7 @@ async def verify_claims(claims: List[str]) -> dict:
     results = await asyncio.gather(*[
         _verify_claim_with_embedding(c, e) for c, e in zip(claims, embeddings)
     ])
-    verified_claims: List[Claim] = [r[0] for r in results]
+    verified_claims: list[Claim] = [r[0] for r in results]
 
     # Calculate costs: claim embeddings + the per-claim entailment LLM calls
     judge_input_tokens = sum(r[1] for r in results)

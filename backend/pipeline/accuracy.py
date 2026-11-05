@@ -5,15 +5,17 @@ answer is grounded in the documentation (via the extracted + verified claims) an
 emits errors/corrections that feed the refinement loop. Answer style, structure, and
 completeness are out of scope here — those are judged by the Quality stage."""
 
-from typing import List
-
-from backend.config import settings, PipelineConfig
-from backend.models import Claim, AccuracyOutput
-from backend.observability import instrument_stage, calculate_anthropic_cost, usage_and_cost
-from backend.pipeline._agents import anthropic_agent
-from backend.workflows_app import model_request_workflows
 import logfire
 
+from backend.config import PipelineConfig, settings
+from backend.models import AccuracyOutput, Claim
+from backend.observability import (
+    calculate_anthropic_cost,
+    instrument_stage,
+    usage_and_cost,
+)
+from backend.pipeline._agents import anthropic_agent
+from backend.workflows_app import model_request_workflows
 
 ACCURACY_CHECK_INSTRUCTIONS = """You are the technical-accuracy reviewer for Render documentation answers.
 
@@ -55,7 +57,7 @@ _accuracy_agent = anthropic_agent(
 @instrument_stage(PipelineConfig.STAGE_ACCURACY)
 async def check_accuracy(
     answer: str,
-    verified_claims: List[Claim]
+    verified_claims: list[Claim]
 ) -> dict:
     """
     Deep accuracy validation using Claude.

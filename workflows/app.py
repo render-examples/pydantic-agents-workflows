@@ -33,12 +33,13 @@ from opentelemetry import trace
 from pydantic_ai_harness import RenderWorkflows
 from render import Retry, TaskContext
 
-# Importing observability configures Logfire at module load (same as the web app).
-from backend.observability import pipeline_trace, track_pipeline_metrics
 from backend.config import settings
 from backend.database import vector_store
 from backend.ingestion import embed_documents, replace_source
 from backend.models import AnswerResponse, PipelineStageResult
+
+# Importing observability configures Logfire at module load (same as the web app).
+from backend.observability import pipeline_trace, track_pipeline_metrics
 from backend.pipeline import (
     check_accuracy,
     collapse_sources,

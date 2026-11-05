@@ -1,16 +1,18 @@
 """Stage 3: Answer Generation."""
 
-from typing import List
 
+import logfire
 from render import Retry
 
-from backend.config import settings, PipelineConfig
+from backend.config import PipelineConfig, settings
 from backend.models import Document
-from backend.observability import instrument_stage, calculate_anthropic_cost, usage_and_cost
+from backend.observability import (
+    calculate_anthropic_cost,
+    instrument_stage,
+    usage_and_cost,
+)
 from backend.pipeline._agents import anthropic_agent
 from backend.workflows_app import model_request_workflows
-import logfire
-
 
 ANSWER_GENERATION_INSTRUCTIONS = """You are a technical assistant for Render's cloud platform. Answer developer questions accurately and clearly, using only the documentation provided in the prompt.
 
@@ -37,7 +39,7 @@ _answer_agent = anthropic_agent(
 @instrument_stage(PipelineConfig.STAGE_GENERATION)
 async def generate_answer(
     question: str,
-    documents: List[Document]
+    documents: list[Document]
 ) -> dict:
     """
     Generate comprehensive answer using retrieved context.

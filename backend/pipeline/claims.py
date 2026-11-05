@@ -1,14 +1,17 @@
 """Stage 4: Claims Extraction."""
 
-from typing import List
 
-from backend.config import settings, PipelineConfig
-from backend.models import ClaimsOutput
-from backend.observability import instrument_stage, calculate_openai_cost, usage_and_cost
-from backend.pipeline._agents import openai_agent
-from backend.workflows_app import model_request_workflows
 import logfire
 
+from backend.config import PipelineConfig, settings
+from backend.models import ClaimsOutput
+from backend.observability import (
+    calculate_openai_cost,
+    instrument_stage,
+    usage_and_cost,
+)
+from backend.pipeline._agents import openai_agent
+from backend.workflows_app import model_request_workflows
 
 CLAIMS_EXTRACTION_INSTRUCTIONS = """Extract the verifiable factual claims from answers about Render's platform.
 
@@ -79,7 +82,7 @@ async def extract_claims(answer: str) -> dict:
             answer_length=len(answer),
         )
 
-    claims: List[str] = result.output.claims
+    claims: list[str] = result.output.claims
 
     if len(claims) == 0 and len(answer) > 100:
         logfire.warn(

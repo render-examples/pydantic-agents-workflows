@@ -6,15 +6,14 @@ score in parallel and their agreement is a confidence signal. Factual grounding 
 checked separately by the Accuracy stage, so this stage does not re-verify each fact."""
 
 from backend.config import settings
-from backend.models import EvaluationResult, EvaluationOutput
+from backend.models import EvaluationOutput, EvaluationResult
 from backend.observability import (
-    calculate_openai_cost,
     calculate_anthropic_cost,
+    calculate_openai_cost,
     usage_and_cost,
 )
 from backend.pipeline._agents import anthropic_agent, openai_agent
 from backend.workflows_app import model_request_workflows
-
 
 EVALUATION_INSTRUCTIONS = """You are a quality evaluator for technical documentation answers.
 
