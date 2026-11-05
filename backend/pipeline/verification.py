@@ -87,7 +87,7 @@ Decide whether the passages substantiate the claim."""
         model_settings={"temperature": 0.0, "max_tokens": 500},
     )
     verdict: ClaimVerdict = result.output
-    usage = result.usage()
+    usage = result.usage
     input_tokens = usage.input_tokens or 0
     output_tokens = usage.output_tokens or 0
 

@@ -161,7 +161,7 @@ def usage_and_cost(result, cost_fn, model: str) -> dict:
 
     Returns a dict with ``input_tokens``, ``output_tokens``, ``cost_usd``.
     """
-    usage = result.usage()
+    usage = result.usage
     input_tokens = usage.input_tokens or 0
     output_tokens = usage.output_tokens or 0
     return {
