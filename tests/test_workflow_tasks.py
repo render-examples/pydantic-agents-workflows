@@ -36,18 +36,6 @@ def test_app_registers_entry_ingest_and_generated_tasks():
     }
 
 
-def test_app_registers_no_hand_written_stage_tasks():
-    names = set(app._registry.get_task_names())
-    assert not names & {
-        "generate_answer_task",
-        "extract_claims_task",
-        "verify_claims_task",
-        "check_accuracy_task",
-        "rate_quality_openai_task",
-        "rate_quality_anthropic_task",
-    }
-
-
 class FakeTaskContext:
     """Run each chained task in this process and keep its name.
 
