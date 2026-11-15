@@ -27,7 +27,7 @@ https://github.com/user-attachments/assets/68c6ace5-b070-4c7c-9ab6-5d4342134956
 - **Grounded answers.** The assistant answers only from retrieved documentation. The prompt does not tell it to favor Render products.
 - **Cost tracking.** The UI shows the cost of each question, per stage.
 - **Live progress.** The UI shows each pipeline stage as it runs.
-- **Render Workflows.** The pipeline and ingestion run as workflow tasks with retries and timeouts. The accuracy and quality checks run at the same time on separate instances.
+- **Render Workflows.** The pipeline and ingestion run as workflow tasks. Each model request from a pipeline agent runs as its own chained task run with its own retries and timeout, so the accuracy and quality checks run at the same time on separate instances.
 
 The project uses these parts of the [Pydantic](https://pydantic.dev/) stack:
 
@@ -67,23 +67,25 @@ The API also reads Postgres directly. The pipeline writes stage updates to Postg
 
 ### Pipeline stages
 
-`run_qa_pipeline` runs seven stages, and it calls every stage function inside the orchestrator process. Stages 3, 4, 6, and 7 use agents with the `RenderWorkflows` capability from [Pydantic AI Harness](https://github.com/pydantic/pydantic-ai/blob/main/docs/harness/render-workflows.md). Each of these agents adds the capability in its `capabilities` list, with its own timeout and retry policy, through `model_request_workflows()` in [`backend/workflows_app.py`](./backend/workflows_app.py). The agent code does not change otherwise.
+`run_qa_pipeline` is the orchestrator task. It runs seven stages and calls every stage function in its own process. The agents for stages 3, 4, 6, and 7 have the `RenderWorkflows` capability from [Pydantic AI Harness](https://github.com/pydantic/pydantic-ai/blob/main/docs/harness/render-workflows.md), so each of their model requests runs as a separate chained task run, such as `answer__model.request`. A failed model request retries in its chained run, and the stages before it do not run again.
 
-`workflows/app.py` registers `run_qa_pipeline` with the `task` decorator of a `RenderWorkflows` instance. Inside that task, each model request from these agents runs as a chained task run, such as `answer__model.request`, so each request can retry on its own. Outside a workflow task, for example in unit tests, the agents call the model directly. Other failures, such as invalid structured output or an error in claim verification, fail the orchestrator task, which then runs again from the start.
+Each agent adds the capability to its `capabilities` list through `model_request_workflows()` in [`backend/workflows_app.py`](./backend/workflows_app.py), which sets the timeout and retry policy for that agent. The agent code does not change otherwise. Chained runs start only inside a task that a `RenderWorkflows` instance registers, so [`workflows/app.py`](./workflows/app.py) registers `run_qa_pipeline` with `pipeline_workflows.task`. Outside a workflow task, for example in unit tests, the agents call the model directly.
 
-| # | Stage | Default model | Runs as |
-|---|-------|---------------|---------|
-| 1 | Question embedding | `text-embedding-3-small` | orchestrator |
-| 2 | Hybrid retrieval with query expansion | `gpt-5.4-nano` | orchestrator |
-| 3 | Answer generation | `claude-sonnet-5-5` | chained model request, 3 retries |
-| 4 | Claims extraction | `gpt-5.4-mini` | chained model request |
-| 5 | Claims verification | `text-embedding-3-small` | orchestrator |
-| 6 | Accuracy check | `claude-sonnet-5-5` | chained model request, parallel with 7 |
-| 7 | Quality rating | `gpt-5.4-mini` and `claude-sonnet-5-5` | 2 chained model requests, parallel with 6 |
+Other failures, such as invalid structured output or an error in claim verification, fail the orchestrator task. Render then runs the task again from the start.
 
-You can change each model in the `pydantic-agents-workflows-pipeline` env group. See [`workflows/app.py`](./workflows/app.py).
+| # | Stage | Default model | Runs as | Timeout and retries |
+|---|-------|---------------|---------|---------------------|
+| 1 | Question embedding | `text-embedding-3-small` | orchestrator | orchestrator task: 600 s |
+| 2 | Hybrid retrieval with query expansion | `gpt-5.4-nano` | orchestrator | orchestrator task: 600 s |
+| 3 | Answer generation | `claude-sonnet-5-5` | chained model request | 120 s, 3 retries |
+| 4 | Claims extraction | `gpt-5.4-mini` | chained model request | 60 s, 2 retries |
+| 5 | Claims verification | `text-embedding-3-small` | orchestrator | orchestrator task: 600 s |
+| 6 | Accuracy check | `claude-sonnet-5-5` | chained model request, parallel with 7 | 90 s, 2 retries |
+| 7 | Quality rating | `gpt-5.4-mini` and `claude-sonnet-5-5` | 2 chained model requests, parallel with 6 | 60 s each, 2 retries |
 
-Ingestion runs the same way. `ingest_all` runs `ingest_core`, then runs one `ingest_source` task for each source in [`data/sources.py`](./data/sources.py). A daily cron job starts `ingest_all`. The API also refreshes the live sources in its `preDeployCommand`.
+You can change each model in the `pydantic-agents-workflows-pipeline` env group.
+
+Ingestion uses subtasks. `ingest_all` runs `ingest_core` as a subtask, then starts one `ingest_source` subtask for each source in [`data/sources.py`](./data/sources.py), all at the same time. Each `ingest_source` run retries on its own. A daily cron job starts `ingest_all`. The API also refreshes the live sources in its `preDeployCommand`.
 
 ### Project structure
 
