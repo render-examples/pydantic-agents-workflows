@@ -102,7 +102,7 @@ def instrument_stage(stage_name: str):
 async def pipeline_trace(question: str):
     """Context manager for tracing an entire pipeline execution."""
 
-    with logfire.span("qa_pipeline", question=question) as span:
+    with logfire.span("qa_pipeline: {question}", question=question) as span:
         span.set_attribute("span_type", "pipeline")
         start_time = time.time()
         pipeline_context = {"span": span, "start_time": start_time, "total_cost": 0.0, "stages": []}
