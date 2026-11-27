@@ -608,18 +608,20 @@ class VectorStore:
             return
 
         updates_json = json.dumps(updates)
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO pipeline_progress (token, updates, updated_at)
-                VALUES ($1, $2::jsonb, NOW())
-                ON CONFLICT (token) DO UPDATE
-                SET updates = EXCLUDED.updates, updated_at = NOW()
-            """,
-                token,
-                updates_json,
-            )
-            await conn.execute("DELETE FROM pipeline_progress WHERE updated_at < NOW() - INTERVAL '1 day'")
+        # Bookkeeping for the UI, not pipeline work: keep its queries out of the trace.
+        with logfire.suppress_instrumentation():
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO pipeline_progress (token, updates, updated_at)
+                    VALUES ($1, $2::jsonb, NOW())
+                    ON CONFLICT (token) DO UPDATE
+                    SET updates = EXCLUDED.updates, updated_at = NOW()
+                """,
+                    token,
+                    updates_json,
+                )
+                await conn.execute("DELETE FROM pipeline_progress WHERE updated_at < NOW() - INTERVAL '1 day'")
 
     async def record_run(self, token: str, run_id: str) -> None:
         """Save the run ID that POST /ask started under ``token``."""
@@ -643,17 +645,18 @@ class VectorStore:
         if not self.pool:
             return
 
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO pipeline_progress (token, trace_id, updated_at)
-                VALUES ($1, $2, NOW())
-                ON CONFLICT (token) DO UPDATE
-                SET trace_id = EXCLUDED.trace_id, updated_at = NOW()
-            """,
-                token,
-                trace_id,
-            )
+        with logfire.suppress_instrumentation():
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO pipeline_progress (token, trace_id, updated_at)
+                    VALUES ($1, $2, NOW())
+                    ON CONFLICT (token) DO UPDATE
+                    SET trace_id = EXCLUDED.trace_id, updated_at = NOW()
+                """,
+                    token,
+                    trace_id,
+                )
 
     async def get_run(self, token: str, run_id: str) -> dict | None:
         """Return the progress row only if ``token`` belongs to ``run_id``.

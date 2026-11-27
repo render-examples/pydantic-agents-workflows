@@ -311,11 +311,20 @@ async def run_qa_pipeline(
             67,
             total_cost,
         )
+
+        async def evaluate_quality() -> tuple[dict, dict]:
+            # One span for both judges, so the trace shows the quality stage as a unit
+            # beside the accuracy stage, with its two model requests inside it.
+            with logfire.span(PipelineConfig.STAGE_EVALUATION, span_type="pipeline_stage"):
+                return await asyncio.gather(
+                    evaluate_with_openai(question, answer_text, len(documents)),
+                    evaluate_with_anthropic(question, answer_text, len(documents)),
+                )
+
         stage_start = time.time()
-        accuracy_result, openai_rate, anthropic_rate = await asyncio.gather(
+        accuracy_result, (openai_rate, anthropic_rate) = await asyncio.gather(
             check_accuracy(answer_text, verified_claims),
-            evaluate_with_openai(question, answer_text, len(documents)),
-            evaluate_with_anthropic(question, answer_text, len(documents)),
+            evaluate_quality(),
         )
         parallel_duration = (time.time() - stage_start) * 1000
 
